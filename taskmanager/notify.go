@@ -22,6 +22,7 @@ func buildNotification(data []byte) (Notification, error) {
 	return n, err
 }
 
+// startReadingNotification reads topics of Kafka, constructs Notification and sends to notification channel
 func (svc *tmSvc) startReadingNotification(notifyCh chan<- Notification, abortCh <-chan bool) {
 	defer func() {
 		_ = svc.kafkaReader.Close()
@@ -57,6 +58,7 @@ func (svc *tmSvc) startReadingNotification(notifyCh chan<- Notification, abortCh
 
 }
 
+// processNotifications reads notification channel, and performs CUD operations with incoming events from other services
 func (svc *tmSvc) processNotifications(notifyCh <-chan Notification, abortCh <-chan bool) {
 	for {
 		select {

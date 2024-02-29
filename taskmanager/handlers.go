@@ -14,6 +14,7 @@ func forbidden(c echo.Context) error {
 	return c.JSON(http.StatusForbidden, common.FromKeysAndValues("error", "forbidden"))
 }
 
+// newTask creates new task, and assigns it to random user
 func (svc *tmSvc) newTask(c echo.Context) error {
 	userIsAllowed, userId := svc.checkAuth(c, []UserRole{RoleAdmin, RoleUser, RoleAccountant, RoleManager})
 	if !userIsAllowed {
@@ -50,18 +51,28 @@ func (svc *tmSvc) newTask(c echo.Context) error {
 	return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", "failed to create task"))
 }
 
+// getTasks renders tasks of current user
 func (svc *tmSvc) getTasks(c echo.Context) error {
 	return c.JSON(http.StatusOK, nil)
 }
 
+// getTask renders task of current user with additional information by id
 func (svc *tmSvc) getTask(c echo.Context) error {
 	return c.JSON(http.StatusOK, nil)
 }
 
+// completeTask sets task status to Complete
 func (svc *tmSvc) completeTask(c echo.Context) error {
 	return c.JSON(http.StatusOK, nil)
 }
 
+// reassignTasks reassign all tasks with status=Open to users
+func (svc *tmSvc) reassignTasks(c echo.Context) error {
+	return c.JSON(http.StatusOK, nil)
+}
+
+// checkAuth if current request contain authorization header, sends request to Auth service to check token,
+// and checks if user has one of the following roles
 func (svc *tmSvc) checkAuth(c echo.Context, availableFor []UserRole) (bool, int) {
 	authHeader := c.Request().Header["Authorization"][0]
 	if authHeader == "" {
@@ -75,6 +86,7 @@ func (svc *tmSvc) checkAuth(c echo.Context, availableFor []UserRole) (bool, int)
 	return svc.checkUserRole(sub, availableFor)
 }
 
+// verifyAuth performs request to Auth service to check token, returns public identifier of authenticated user
 func (svc *tmSvc) verifyAuth(authz string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/verify", svc.authServer), nil)
 	if err != nil {
@@ -98,6 +110,7 @@ func (svc *tmSvc) verifyAuth(authz string) (string, error) {
 	return ver.PublicId, nil
 }
 
+// checkUserRole checks if user with given public identifier belongs to one of the following roles
 func (svc *tmSvc) checkUserRole(publicId string, availableFor []UserRole) (bool, int) {
 	var userFromDb User
 	result := svc.tmDb.First(&userFromDb, "public_id = ?", publicId)
@@ -117,6 +130,7 @@ func (svc *tmSvc) getRandomUser() (int, error) {
 	return 0, nil
 }
 
+// getTaskFromRequest constructs Task based on the payload of request
 func getTaskFromRequest(c echo.Context) (Task, error) {
 	var task Task
 	body, err := io.ReadAll(c.Request().Body)

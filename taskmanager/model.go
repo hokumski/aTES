@@ -19,7 +19,7 @@ const (
 	RoleAccountant
 )
 
-// User is synced, source is Auth
+// User is synced, source is "auth"
 type User struct {
 	gorm.Model `json:"-"`
 	PublicId   string `json:"uid"`
