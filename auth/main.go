@@ -8,16 +8,18 @@ import (
 	"github.com/go-oauth2/oauth2/v4/store"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"os"
 )
 
-type atesAuthSvc struct {
+type authSvc struct {
 	logger      *zap.SugaredLogger
 	oauthServer *server.Server
 	userDb      *gorm.DB
+	kafkaWriter *kafka.Writer
 }
 
 func main() {
@@ -76,10 +78,25 @@ func main() {
 		logger.Errorf("Response Error: %s", re.Error.Error())
 	})
 
-	app := atesAuthSvc{
+	kafkaWriter := &kafka.Writer{
+		Addr:     kafka.TCP(kafkaAddress),
+		Topic:    "user_events",
+		Balancer: &kafka.LeastBytes{},
+	}
+	kafkaWriter.AllowAutoTopicCreation = true
+
+	defer func(kafkaWriter *kafka.Writer) {
+		err := kafkaWriter.Close()
+		if err != nil {
+			logger.Error(err)
+		}
+	}(kafkaWriter)
+
+	app := authSvc{
 		logger:      logger,
 		oauthServer: srv,
 		userDb:      db,
+		kafkaWriter: kafkaWriter,
 	}
 	srv.SetPasswordAuthorizationHandler(app.checkPassword)
 

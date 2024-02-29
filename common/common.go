@@ -7,7 +7,9 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"math/rand"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -29,6 +31,19 @@ func FromKeysAndValues(vals ...interface{}) map[string]interface{} {
 		}
 	}
 	return r
+}
+
+const digitBytes = "0123456789"
+const letterBytes = "abcdefghijklmnopqrstuwxyz"
+const digitLetterBytes = digitBytes + letterBytes
+
+// GenerateRandomString returns string containing N symbols: lowercase latins and digits
+func GenerateRandomString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = digitLetterBytes[rand.Int63()%int64(len(digitLetterBytes))]
+	}
+	return string(b)
 }
 
 func GetNewEcho(logger *zap.SugaredLogger) *echo.Echo {
@@ -68,4 +83,15 @@ func GetZapCore(forDevel bool) zapcore.Core {
 	cores = append(cores, zapcore.NewCore(consoleEncoder, stdoutSyncer, allLevels))
 
 	return zapcore.NewTee(cores...)
+}
+
+func EnsureServerProtocol(server string) string {
+	server = strings.ToLower(server)
+	if strings.HasPrefix(server, "https://") || strings.HasPrefix(server, "http://") {
+		return server
+	}
+	if strings.HasPrefix(server, "localhost") {
+		return fmt.Sprintf("http://%s", server)
+	}
+	return fmt.Sprintf("https://%s", server)
 }

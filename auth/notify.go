@@ -1,22 +1,60 @@
 package main
 
+import (
+	"ates/common"
+	"context"
+	"encoding/json"
+	"github.com/segmentio/kafka-go"
+)
+
 type Notification struct {
-	ty string
+	Attributes map[string]string `json:"attributes"`
+	Payload    []byte            `json:"payload"`
 }
 
-func (app *atesAuthSvc) notifyAsync(eventType string, e interface{}) {
+func (n *Notification) marshal() []byte {
+	body, _ := json.Marshal(n)
+	return body
+}
+
+func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
+
+	msg := kafka.Message{
+		Key:   []byte(common.GenerateRandomString(10)),
+		Value: nil,
+	}
+
+	attributes := make(map[string]string)
+	attributes["event"] = eventType
+	attributes["source"] = "auth"
 
 	switch e.(type) {
 	case User:
+		attributes["entity"] = "User"
 
 		switch eventType {
 		case "UserCreated":
+			u := e.(User)
+			userForNotify := User{
+				PublicId: u.PublicId,
+				Login:    u.Login,
+				RoleID:   u.RoleID,
+			}
 
-			//u := e.(User)
-
-			// todo
+			notification := Notification{
+				Attributes: attributes,
+				Payload:    userForNotify.marshal(),
+			}
+			msg.Value = notification.marshal()
 
 		}
+	}
 
+	if msg.Value != nil {
+		err := svc.kafkaWriter.WriteMessages(*ctx, msg)
+		if err != nil {
+			svc.logger.Errorf("Failed to send event notification on %s", eventType)
+			svc.logger.Error(err)
+		}
 	}
 }
