@@ -49,6 +49,8 @@ func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interfac
 	attributes["event"] = eventType
 
 	switch e.(type) {
+	case []Task:
+		// ...
 	case Task:
 		attributes["entity"] = "Task"
 

@@ -178,9 +178,13 @@ func (svc *tmSvc) reassignTasks(c echo.Context) error {
 	if err == nil {
 		svc.logger.Infof("%d task are reassigned", len(tasks))
 		//ctx := context.Background()
+		// todo: choose one of:
 		//for _, task := range tasks {
 		//	go svc.notifyAsync(&ctx, "TaskReassigned", task)
 		//}
+		// OR (need to implement msg... on notifyAsync)
+		//go svc.notifyAsync(&ctx, "TaskReassigned", tasks)
+
 		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "tasks reassigned"))
 	}
 

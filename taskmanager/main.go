@@ -101,4 +101,8 @@ func main() {
 	go app.processNotifications(incomingNotificationsCh, abortProcessCh)
 
 	e.Logger.Fatal(e.Start(webAddress))
+
+	abortReadCh <- true
+	abortProcessCh <- true
+
 }
