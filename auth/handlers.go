@@ -10,6 +10,7 @@ import (
 	"net/http"
 )
 
+// registerUser reads user data from request body and registers new user
 func (svc *authSvc) registerUser(c echo.Context) error {
 
 	// Everybody can add User: kind of self-registration
@@ -68,25 +69,20 @@ func (svc *authSvc) updateUser(c echo.Context) error {
 	panic("Not implemented")
 }
 
+// verify validates access token from request header
 func (svc *authSvc) verify(c echo.Context) error {
 	tokenInfo, err := svc.oauthServer.ValidationBearerToken(c.Request())
 	if err != nil {
 		svc.logger.Error(err)
 		return c.String(http.StatusBadRequest, err.Error())
 	}
-	return c.JSON(http.StatusOK, Verification{PublicId: tokenInfo.GetUserID()})
+	return c.JSON(http.StatusOK, AuthVerification{PublicId: tokenInfo.GetUserID()})
 }
 
+// token exchanges user and password to access and refresh tokens
+// /oauth/token?grant_type=password&username=USER&password=PASSWORD&client_id=default&client_secret=secret
 func (svc *authSvc) token(c echo.Context) error {
 	err := svc.oauthServer.HandleTokenRequest(c.Response().Writer, c.Request())
-	if err != nil {
-		svc.logger.Error(err)
-	}
-	return err
-}
-
-func (svc *authSvc) authorize(c echo.Context) error {
-	err := svc.oauthServer.HandleAuthorizeRequest(c.Response().Writer, c.Request())
 	if err != nil {
 		svc.logger.Error(err)
 	}

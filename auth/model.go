@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type Verification struct {
+type AuthVerification struct {
 	PublicId string `json:"sub"`
 }
 
@@ -18,7 +18,7 @@ type User struct {
 	Password     string `gorm:"-" json:"password,omitempty"`
 	PasswordHash string `json:"-"`
 	PasswordSalt string `json:"-"`
-	RoleID       int    `json:"roleId"`
+	RoleID       uint   `json:"roleId"`
 	Role         Role   `json:"-"`
 }
 

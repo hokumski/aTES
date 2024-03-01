@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/sha256"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -12,6 +13,12 @@ import (
 	"strings"
 	"time"
 )
+
+// IsUUID checks if string is uid-format
+func IsUUID(uid string) bool {
+	_, err := uuid.Parse(uid)
+	return err == nil
+}
 
 // HashSHA256 returns SHA256 of bytes
 func HashSHA256(b []byte) string {

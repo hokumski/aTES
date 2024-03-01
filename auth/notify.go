@@ -17,6 +17,7 @@ func (n *Notification) marshal() []byte {
 	return body
 }
 
+// notifyAsync sends notification to Kafka
 func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
 
 	msg := kafka.Message{
@@ -26,7 +27,6 @@ func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interf
 
 	attributes := make(map[string]string)
 	attributes["event"] = eventType
-	attributes["source"] = "auth"
 
 	switch e.(type) {
 	case User:

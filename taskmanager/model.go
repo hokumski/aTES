@@ -1,16 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"gorm.io/gorm"
 )
 
-type Verification struct {
+type AuthVerification struct {
 	PublicId string `json:"sub"`
 }
 
 // UserRole copies values from Auth.Role
-type UserRole int
+type UserRole uint
 
 const (
 	RoleAdmin UserRole = iota + 1
@@ -22,22 +23,22 @@ const (
 // User is synced, source is "auth"
 type User struct {
 	gorm.Model `json:"-"`
-	PublicId   string `json:"uid"`
-	Login      string `json:"login"`
-	RoleID     int    `json:"roleId"`
+	PublicId   string   `json:"uid"`
+	Login      string   `json:"login"`
+	RoleID     UserRole `json:"roleId"` // uint
 }
 
 type Task struct {
 	gorm.Model   `json:"-"`
-	PublicId     string `gorm:"default:(uuid());unique" json:"tid"`
-	Title        string `json:"title"`
-	Description  string `json:"description"`
-	StatusID     int    `json:"statusId"`
-	Status       Status `json:"-"`
-	AuthorID     int    `json:"authorId"`
-	Author       User   `json:"-"`
-	AssignedToID int    `json:"assignedId"`
-	AssignedTo   User   `json:"-"`
+	PublicId     string     `gorm:"default:(uuid());unique" json:"tid"`
+	Title        string     `json:"title"`
+	Description  string     `json:"description"`
+	StatusID     TaskStatus `json:"statusId"` // uint
+	Status       Status     `json:"-"`
+	AuthorID     uint       `json:"-"`
+	Author       User       `json:"-"`
+	AssignedToID uint       `json:"-"`
+	AssignedTo   User       `json:"assignedTo"`
 }
 
 func (t *Task) validate() error {
@@ -59,28 +60,31 @@ func (t *Task) validate() error {
 	return nil
 }
 
+func (t *Task) marshal() []byte {
+	b, _ := json.Marshal(t)
+	return b
+}
+
 type Status struct {
 	gorm.Model
 	Name string
 }
 
 // TaskStatus copies values from TaskManager.Status
-type TaskStatus int
+type TaskStatus uint
 
 const (
 	StatusOpen TaskStatus = iota + 1
-	StatusClosed
+	StatusCompleted
 )
 
 // TaskLog contains log of status changes
 type TaskLog struct {
 	gorm.Model
-	OwnerId  int
-	TaskId   int
-	Task     Task
-	StatusId int
-	Status   Status
-	Message  string // commit message
+	AssignedToId uint
+	TaskId       uint
+	StatusId     TaskStatus // uint
+	Message      string     // commit message
 }
 
 func createDefaultStatuses(db *gorm.DB) {

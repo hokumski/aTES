@@ -47,7 +47,7 @@ func main() {
 
 	kafkaWriter := &kafka.Writer{
 		Addr:     kafka.TCP(kafkaAddress),
-		Topic:    "user_events",
+		Topic:    "task_events",
 		Balancer: &kafka.LeastBytes{},
 	}
 	kafkaWriter.AllowAutoTopicCreation = true
@@ -73,7 +73,7 @@ func main() {
 
 	// Ensure tables
 	_ = db.AutoMigrate(&User{}, &Task{}, &Status{}, &TaskLog{})
-	createDefaultStatuses(db)
+	//createDefaultStatuses(db)
 
 	app := tmSvc{
 		logger:     logger,
@@ -89,9 +89,10 @@ func main() {
 	}
 
 	e.POST("/tasks/new", app.newTask)
-	e.GET("/tasks/list", app.getTasks)
-	e.GET("/tasks/:id", app.getTask)
-	e.POST("/tasks/:id/complete", app.completeTask)
+	e.POST("/tasks/reassign", app.reassignTasks)
+	e.GET("/tasks/list", app.getOpenTasks)
+	e.GET("/tasks/:tid", app.getTask)                // tid is UUID
+	e.POST("/tasks/:tid/complete", app.completeTask) // tid is UUID
 
 	abortReadCh := make(chan bool)
 	abortProcessCh := make(chan bool)

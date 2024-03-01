@@ -2,11 +2,11 @@ package main
 
 import (
 	"ates/common"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/labstack/echo/v4"
-	"io"
+	"gorm.io/gorm"
+	"math/rand"
 	"net/http"
 )
 
@@ -26,13 +26,12 @@ func (svc *tmSvc) newTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", err.Error()))
 	}
 
-	randomUserId, err := svc.getRandomUser()
-	if err != nil {
-		svc.logger.Errorf("Failed to find random user to assign new task")
-		return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", "failed to choose user to assign new task"))
-	}
+	userIds := svc.getUserIds()
+	randomUserId := userIds[rand.Intn(len(userIds))]
+
 	task.AuthorID = userId
 	task.AssignedToID = randomUserId
+	task.StatusID = StatusOpen
 
 	err = task.validate()
 	if err != nil {
@@ -40,108 +39,151 @@ func (svc *tmSvc) newTask(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", err.Error()))
 	}
 
-	result := svc.tmDb.Create(&task)
-	if result.RowsAffected == 1 {
+	err = svc.tmDb.Transaction(func(tx *gorm.DB) error {
+		result := svc.tmDb.Create(&task)
+		if result.RowsAffected != 1 {
+			return errors.New("failed to create task on db request")
+		}
+		return svc.recordTaskLog(&task, fmt.Sprintf("created by user#%d", task.AuthorID))
+	})
+
+	if err == nil {
 		svc.logger.Infof("New task created by user#%d", userId)
+		//ctx := context.Background()
+		//go svc.notifyAsync(&ctx, "TaskCreated", task)
 		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "task created"))
 	}
-	svc.logger.Errorf("Failed to create task on db request")
-	svc.logger.Error(task)
 
-	return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", "failed to create task"))
+	svc.logger.Errorf(err.Error())
+	svc.logger.Error(task)
+	return c.JSON(http.StatusInternalServerError, common.FromKeysAndValues("error", "failed to create task"))
 }
 
-// getTasks renders tasks of current user
-func (svc *tmSvc) getTasks(c echo.Context) error {
-	return c.JSON(http.StatusOK, nil)
+// getOpenTasks renders tasks of current user with status=Open
+func (svc *tmSvc) getOpenTasks(c echo.Context) error {
+	userIsAllowed, userId := svc.checkAuth(c, []UserRole{RoleUser})
+	if !userIsAllowed {
+		return forbidden(c)
+	}
+
+	var tasks []Task
+	svc.tmDb.
+		Preload("AssignedTo").
+		Where("assigned_to_id = ? and status_id = ?", userId, StatusOpen).
+		Find(&tasks)
+
+	return c.JSON(http.StatusOK, tasks)
 }
 
 // getTask renders task of current user with additional information by id
 func (svc *tmSvc) getTask(c echo.Context) error {
-	return c.JSON(http.StatusOK, nil)
+	userIsAllowed, userId := svc.checkAuth(c, []UserRole{RoleUser})
+	if !userIsAllowed {
+		return forbidden(c)
+	}
+
+	tid := c.Param("tid")
+	if !common.IsUUID(tid) {
+		return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", "bad id"))
+	}
+
+	var task Task
+	result := svc.tmDb.
+		Preload("AssignedTo").
+		Where("public_id = ? AND assigned_to_id = ?", tid, userId).
+		Find(&task)
+	if result.RowsAffected == 0 {
+		return c.JSON(http.StatusNotFound, nil)
+	}
+
+	return c.JSON(http.StatusOK, task)
 }
 
 // completeTask sets task status to Complete
 func (svc *tmSvc) completeTask(c echo.Context) error {
-	return c.JSON(http.StatusOK, nil)
+	userIsAllowed, userId := svc.checkAuth(c, []UserRole{RoleUser})
+	if !userIsAllowed {
+		return forbidden(c)
+	}
+
+	tid := c.Param("tid")
+	if !common.IsUUID(tid) {
+		return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", "bad id"))
+	}
+
+	var task Task
+	result := svc.tmDb.
+		Preload("AssignedTo").
+		Where("public_id = ? AND assigned_to_id = ? AND status_id = ?", tid, userId, StatusOpen).
+		Find(&task)
+
+	if result.RowsAffected == 0 {
+		return c.JSON(http.StatusNotFound, nil)
+	}
+
+	err := svc.tmDb.Transaction(func(tx *gorm.DB) error {
+		task.StatusID = StatusCompleted
+		result = svc.tmDb.Save(&task)
+		if result.RowsAffected != 1 {
+			return errors.New("failed to complete task")
+		}
+		return svc.recordTaskLog(&task, "completed")
+	})
+
+	if err == nil {
+		svc.logger.Infof("task %s is set completed", tid)
+		//ctx := context.Background()
+		//go svc.notifyAsync(&ctx, "TaskCompleted", task)
+		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "task completed"))
+	}
+
+	svc.logger.Errorf(err.Error())
+	svc.logger.Error(task)
+	return c.JSON(http.StatusInternalServerError, common.FromKeysAndValues("error", "failed to complete task"))
 }
 
 // reassignTasks reassign all tasks with status=Open to users
 func (svc *tmSvc) reassignTasks(c echo.Context) error {
-	return c.JSON(http.StatusOK, nil)
-}
+	userIsAllowed, userId := svc.checkAuth(c, []UserRole{RoleManager, RoleAdmin})
+	if !userIsAllowed {
+		return forbidden(c)
+	}
 
-// checkAuth if current request contain authorization header, sends request to Auth service to check token,
-// and checks if user has one of the following roles
-func (svc *tmSvc) checkAuth(c echo.Context, availableFor []UserRole) (bool, int) {
-	authHeader := c.Request().Header["Authorization"][0]
-	if authHeader == "" {
-		return false, 0
+	var tasks []Task
+	svc.tmDb.Where("status_id = ?", StatusOpen).Find(&tasks)
+	if len(tasks) == 0 {
+		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "no open tasks to reassign"))
 	}
-	sub, err := svc.verifyAuth(authHeader)
-	if err != nil {
-		svc.logger.Infof("Auth failed: %s", err)
-		return false, 0
-	}
-	return svc.checkUserRole(sub, availableFor)
-}
 
-// verifyAuth performs request to Auth service to check token, returns public identifier of authenticated user
-func (svc *tmSvc) verifyAuth(authz string) (string, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/verify", svc.authServer), nil)
-	if err != nil {
-		return "", err
+	allUsers := svc.getUserIds()
+	if len(allUsers) == 0 {
+		return c.JSON(http.StatusBadRequest, common.FromKeysAndValues("error", "failed to assign to users"))
 	}
-	req.Header.Set("Authorization", authz)
-	resp, err := svc.authHttpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", errors.New("authentication failed")
-	}
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	var ver Verification
-	err = json.Unmarshal(body, &ver)
-	if err != nil || ver.PublicId == "" {
-		return "", errors.New("bad answer from auth service")
-	}
-	return ver.PublicId, nil
-}
 
-// checkUserRole checks if user with given public identifier belongs to one of the following roles
-func (svc *tmSvc) checkUserRole(publicId string, availableFor []UserRole) (bool, int) {
-	var userFromDb User
-	result := svc.tmDb.First(&userFromDb, "public_id = ?", publicId)
-	if result.RowsAffected == 1 {
-		// User found, checking role
-		for _, availableRoleId := range availableFor {
-			if userFromDb.RoleID == int(availableRoleId) {
-				return true, int(userFromDb.ID)
+	err := svc.tmDb.Transaction(func(tx *gorm.DB) error {
+		for _, task := range tasks {
+			task.AssignedToID = allUsers[rand.Intn(len(allUsers))] // random user
+			result := svc.tmDb.Save(&task)
+			if result.RowsAffected != 1 {
+				return errors.New(fmt.Sprintf("failed to reassign task %s", task.PublicId))
+			}
+			err := svc.recordTaskLog(&task, fmt.Sprintf("reassigned by user#%d", userId))
+			if err != nil {
+				return err
 			}
 		}
-	}
-	return false, 0
-}
+		return nil
+	})
 
-func (svc *tmSvc) getRandomUser() (int, error) {
-
-	return 0, nil
-}
-
-// getTaskFromRequest constructs Task based on the payload of request
-func getTaskFromRequest(c echo.Context) (Task, error) {
-	var task Task
-	body, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		c.Logger().Errorf("Failed to get body of newTask request\n%s", err.Error())
-		return Task{}, errors.New("failed to get body of newTask request")
+	if err == nil {
+		svc.logger.Infof("%d task are reassigned", len(tasks))
+		//ctx := context.Background()
+		//for _, task := range tasks {
+		//	go svc.notifyAsync(&ctx, "TaskReassigned", task)
+		//}
+		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "tasks reassigned"))
 	}
-	err = json.Unmarshal(body, &task)
-	if err != nil {
-		c.Logger().Errorf("Failed to process body of newTask request\n%s", err.Error())
-		return Task{}, errors.New("failed to process body of newTask request")
-	}
-	return task, nil
+
+	svc.logger.Errorf(err.Error())
+	return c.JSON(http.StatusInternalServerError, common.FromKeysAndValues("error", "failed to reassign tasks"))
 }

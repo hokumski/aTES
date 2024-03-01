@@ -1,9 +1,11 @@
 package main
 
 import (
+	"ates/common"
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/segmentio/kafka-go"
 )
 
 type Notification struct {
@@ -22,7 +24,59 @@ func buildNotification(data []byte) (Notification, error) {
 	return n, err
 }
 
-// startReadingNotification reads topics of Kafka, constructs Notification and sends to notification channel
+// getTaskForNotification returns new Task with public attributes, ready to be sent as notification
+func getTaskForNotification(task *Task) Task {
+	return Task{
+		PublicId:    task.PublicId,
+		Title:       task.Title,
+		Description: task.Description,
+		StatusID:    task.StatusID,
+		AssignedTo: User{
+			PublicId: task.AssignedTo.PublicId,
+		},
+	}
+}
+
+// notifyAsync sends notification to Kafka
+func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
+
+	msg := kafka.Message{
+		Key:   []byte(common.GenerateRandomString(10)),
+		Value: nil,
+	}
+
+	attributes := make(map[string]string)
+	attributes["event"] = eventType
+
+	switch e.(type) {
+	case Task:
+		attributes["entity"] = "Task"
+
+		switch eventType {
+		case "TaskCreated", "TaskCompleted", "TaskReassigned":
+
+			t := e.(Task)
+			taskForNotification := getTaskForNotification(&t)
+
+			notification := Notification{
+				Attributes: attributes,
+				Payload:    taskForNotification.marshal(),
+			}
+			msg.Value = notification.marshal()
+
+		}
+	}
+
+	if msg.Value != nil {
+		err := svc.kafkaWriter.WriteMessages(*ctx, msg)
+		if err != nil {
+			svc.logger.Errorf("Failed to send event notification on %s", eventType)
+			svc.logger.Error(err)
+		}
+	}
+}
+
+// startReadingNotification reads topics from Kafka, constructs Notification and sends to notification channel
 func (svc *tmSvc) startReadingNotification(notifyCh chan<- Notification, abortCh <-chan bool) {
 	defer func() {
 		_ = svc.kafkaReader.Close()
@@ -64,35 +118,26 @@ func (svc *tmSvc) processNotifications(notifyCh <-chan Notification, abortCh <-c
 		select {
 		case notification := <-notifyCh:
 
-			eventSource := notification.Attributes["source"]
 			eventType := notification.Attributes["event"]
 			eventEntity := notification.Attributes["entity"]
 
-			switch eventSource {
-			case "auth":
+			switch eventType {
+			case "UserCreated":
+				if eventEntity != "User" {
+					continue
+				}
+				var u User
+				err := json.Unmarshal(notification.Payload, &u)
+				if err != nil {
+					svc.logger.Errorf("Failed to process notification on %s: bad payload", eventType)
+					continue
+				}
 
-				switch eventType {
-				case "UserCreated":
-					if eventEntity != "User" {
-						continue
-					}
-					var u User
-					err := json.Unmarshal(notification.Payload, &u)
-					if err != nil {
-						svc.logger.Errorf("Failed to process notification on %s with source %s: bad payload",
-							eventType, eventSource)
-						continue
-					}
-
-					result := svc.tmDb.Create(&u)
-					if result.RowsAffected == 1 {
-						svc.logger.Infof("Created user %s based on notification %s from %s",
-							u.PublicId, eventType, eventSource)
-					} else {
-						svc.logger.Errorf("Failed to create user %s based on notification %s from %s",
-							u.PublicId, eventType, eventSource)
-					}
-
+				result := svc.tmDb.Create(&u)
+				if result.RowsAffected == 1 {
+					svc.logger.Infof("Created user %s based on notification %s", u.PublicId, eventType)
+				} else {
+					svc.logger.Errorf("Failed to create user %s based on notification %s", u.PublicId, eventType)
 				}
 
 			}
