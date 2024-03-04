@@ -1,0 +1,84 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"time"
+
+	"github.com/go-oauth2/oauth2/v4"
+	"github.com/go-oauth2/oauth2/v4/models"
+	"gorm.io/gorm"
+)
+
+type ClientStoreItem struct {
+	ID        string
+	Secret    string `gorm:"type:varchar(512)"`
+	Domain    string `gorm:"type:varchar(512)"`
+	Data      string `gorm:"type:text"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+func NewClientStore(db *gorm.DB) *ClientStore {
+	s, err := db.DB()
+	if err != nil {
+		panic(err)
+	}
+	s.SetMaxIdleConns(10)
+	s.SetMaxOpenConns(100)
+	s.SetConnMaxLifetime(time.Hour)
+
+	store := &ClientStore{
+		db:        db,
+		tableName: "oauth2_clients",
+		stdout:    os.Stderr,
+	}
+	if !db.Migrator().HasTable(store.tableName) {
+		if err := db.Table(store.tableName).Migrator().CreateTable(&ClientStoreItem{}); err != nil {
+			panic(err)
+		}
+	}
+
+	return store
+}
+
+type ClientStore struct {
+	tableName string
+	db        *gorm.DB
+	stdout    io.Writer
+}
+
+func (s *ClientStore) GetByID(ctx context.Context, id string) (oauth2.ClientInfo, error) {
+	if id == "" {
+		return nil, nil
+	}
+	var item ClientStoreItem
+	err := s.db.WithContext(ctx).Table(s.tableName).Limit(1).Find(&item, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Client{
+		ID:     item.ID,
+		Secret: item.Secret,
+		Domain: item.Domain,
+	}, nil
+}
+
+func (s *ClientStore) Create(ctx context.Context, info oauth2.ClientInfo) error {
+	data, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+	item := &ClientStoreItem{
+		ID:     info.GetID(),
+		Secret: info.GetSecret(),
+		Domain: info.GetDomain(),
+		Data:   string(data),
+	}
+
+	return s.db.WithContext(ctx).Table(s.tableName).Create(item).Error
+}
