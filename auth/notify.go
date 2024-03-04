@@ -4,7 +4,7 @@ import (
 	"ates/common"
 	"context"
 	"encoding/json"
-	"github.com/segmentio/kafka-go"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 type Notification struct {
@@ -20,9 +20,12 @@ func (n *Notification) marshal() []byte {
 // notifyAsync sends notification to Kafka
 func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
 
+	topic := "user_events"
+
 	msg := kafka.Message{
-		Key:   []byte(common.GenerateRandomString(10)),
-		Value: nil,
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            []byte(common.GenerateRandomString(10)),
+		Value:          nil,
 	}
 
 	attributes := make(map[string]string)
@@ -51,7 +54,7 @@ func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interf
 	}
 
 	if msg.Value != nil {
-		err := svc.kafkaWriter.WriteMessages(*ctx, msg)
+		err := svc.kafkaProducer.Produce(&msg, nil)
 		if err != nil {
 			svc.logger.Errorf("Failed to send event notification on %s", eventType)
 			svc.logger.Error(err)

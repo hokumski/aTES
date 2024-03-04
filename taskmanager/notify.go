@@ -4,8 +4,9 @@ import (
 	"ates/common"
 	"context"
 	"encoding/json"
-	"errors"
-	"github.com/segmentio/kafka-go"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"sync"
+	"time"
 )
 
 type Notification struct {
@@ -40,9 +41,12 @@ func getTaskForNotification(task *Task) Task {
 // notifyAsync sends notification to Kafka
 func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
 
+	topic := "taskmanager_events"
+
 	msg := kafka.Message{
-		Key:   []byte(common.GenerateRandomString(10)),
-		Value: nil,
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            []byte(common.GenerateRandomString(10)),
+		Value:          nil,
 	}
 
 	attributes := make(map[string]string)
@@ -70,7 +74,7 @@ func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interfac
 	}
 
 	if msg.Value != nil {
-		err := svc.kafkaWriter.WriteMessages(*ctx, msg)
+		err := svc.kafkaProducer.Produce(&msg, nil)
 		if err != nil {
 			svc.logger.Errorf("Failed to send event notification on %s", eventType)
 			svc.logger.Error(err)
@@ -81,25 +85,29 @@ func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interfac
 // startReadingNotification reads topics from Kafka, constructs Notification and sends to notification channel
 func (svc *tmSvc) startReadingNotification(notifyCh chan<- Notification, abortCh <-chan bool) {
 	defer func() {
-		_ = svc.kafkaReader.Close()
+		_ = svc.kafkaConsumer.Close()
 	}()
 
-	cctx, cancelReader := context.WithCancel(context.Background())
+	run := true
+	runMx := &sync.Mutex{}
+
 	go func() {
-		for {
-			msg, err := svc.kafkaReader.ReadMessage(cctx)
+		for run {
+			msg, err := svc.kafkaConsumer.ReadMessage(time.Second)
 			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return
+				if err.(kafka.Error).IsTimeout() {
+					continue
 				}
 				svc.logger.Error(err)
+				continue
+				//return
 			}
 			n, err := buildNotification(msg.Value)
 			if err == nil {
-				svc.logger.Infof("Incoming notification from %s: %s", msg.Topic, n.Attributes["event"])
+				svc.logger.Infof("Incoming notification from %s: %s", *msg.TopicPartition.Topic, n.Attributes["event"])
 				notifyCh <- n
 			} else {
-				svc.logger.Errorf("Got notification from %s with wrong format", msg.Topic)
+				svc.logger.Errorf("Got notification from %s with wrong format", *msg.TopicPartition.Topic)
 			}
 		}
 	}()
@@ -107,7 +115,9 @@ func (svc *tmSvc) startReadingNotification(notifyCh chan<- Notification, abortCh
 	for {
 		select {
 		case _ = <-abortCh:
-			cancelReader()
+			runMx.Lock()
+			run = false
+			runMx.Unlock()
 			return
 		}
 	}

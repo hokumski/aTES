@@ -2,8 +2,8 @@ package main
 
 import (
 	"ates/common"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -16,8 +16,8 @@ type tmSvc struct {
 	tmDb           *gorm.DB
 	authServer     string
 	authHttpClient *http.Client
-	kafkaWriter    *kafka.Writer
-	kafkaReader    *kafka.Reader
+	kafkaProducer  *kafka.Producer
+	kafkaConsumer  *kafka.Consumer
 }
 
 func main() {
@@ -45,22 +45,40 @@ func main() {
 		os.Exit(-1)
 	}
 
-	kafkaWriter := &kafka.Writer{
-		Addr:     kafka.TCP(kafkaAddress),
-		Topic:    "task_events",
-		Balancer: &kafka.LeastBytes{},
+	kafkaProducer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"})
+	if err != nil {
+		logger.Fatalf("Failed to initialize Kafka Producer")
+		os.Exit(-1)
 	}
-	kafkaWriter.AllowAutoTopicCreation = true
-	defer func(kafkaWriter *kafka.Writer) {
-		_ = kafkaWriter.Close()
-	}(kafkaWriter)
+	defer kafkaProducer.Close()
+	go func() {
+		for e := range kafkaProducer.Events() {
+			switch ev := e.(type) {
+			case *kafka.Message:
+				if ev.TopicPartition.Error != nil {
+					logger.Errorf("Delivery failed: %v\n", ev.TopicPartition)
+				} else {
+					logger.Debugf("Delivered message to %v\n", ev.TopicPartition)
+				}
+			}
+		}
+	}()
 
-	readerConfig := kafka.ReaderConfig{
-		Brokers:     []string{kafkaAddress},
-		GroupID:     "TaskManager",
-		GroupTopics: []string{"user_events"},
+	kafkaConsumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers": "localhost",
+		"group.id":          "TaskManager",
+		"auto.offset.reset": "earliest",
+	})
+	if err != nil {
+		logger.Fatalf("Failed to initialize Kafka Consumer")
+		os.Exit(-1)
 	}
-	kafkaReader := kafka.NewReader(readerConfig)
+
+	err = kafkaConsumer.SubscribeTopics([]string{"user_events"}, nil)
+	if err != nil {
+		logger.Fatalf("Failed to subscribe to necessary Kafka topic")
+		os.Exit(-1)
+	}
 
 	e := common.GetNewEcho(logger)
 	e.Use(middleware.Recover())
@@ -84,8 +102,8 @@ func main() {
 				//TLSClientConfig: tlsConfig,
 			},
 		},
-		kafkaReader: kafkaReader,
-		kafkaWriter: kafkaWriter,
+		kafkaProducer: kafkaProducer,
+		kafkaConsumer: kafkaConsumer,
 	}
 
 	e.POST("/tasks/new", app.newTask)
