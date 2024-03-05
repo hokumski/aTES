@@ -1,8 +1,9 @@
 package main
 
 import (
-	"encoding/json"
+	"ates/model"
 	"errors"
+	"github.com/hamba/avro/v2"
 	"gorm.io/gorm"
 )
 
@@ -10,35 +11,25 @@ type AuthVerification struct {
 	PublicId string `json:"sub"`
 }
 
-// UserRole copies values from Auth.Role
-type UserRole uint
-
-const (
-	RoleAdmin UserRole = iota + 1
-	RoleUser
-	RoleManager
-	RoleAccountant
-)
-
 // User is synced, source is "auth"
 type User struct {
 	gorm.Model `json:"-"`
-	PublicId   string   `json:"uid"`
-	Login      string   `json:"login"`
-	RoleID     UserRole `json:"roleId"` // uint
+	PublicId   string         `json:"uid" avro:"uid"`
+	Login      string         `json:"login" avro:"login"`
+	RoleID     model.UserRole `json:"roleId" avro:"roleId"` // uint
 }
 
 type Task struct {
 	gorm.Model   `json:"-"`
-	PublicId     string     `gorm:"default:(uuid());unique" json:"tid"`
-	Title        string     `json:"title"`
-	Description  string     `json:"description"`
-	StatusID     TaskStatus `json:"statusId"` // uint
-	Status       Status     `json:"-"`
-	AuthorID     uint       `json:"-"`
-	Author       User       `json:"-"`
-	AssignedToID uint       `json:"-"`
-	AssignedTo   User       `json:"assignedTo"`
+	PublicId     string           `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
+	Title        string           `json:"title" avro:"title"`
+	Description  string           `json:"description" avro:"description"`
+	StatusID     model.TaskStatus `json:"statusId" avro:"statusId"` // uint
+	Status       Status           `json:"-"`
+	AuthorID     uint             `json:"-"`
+	Author       User             `json:"-"`
+	AssignedToID uint             `json:"-"`
+	AssignedTo   User             `json:"assignedTo" avro:"assignedTo"`
 }
 
 func (t *Task) validate() error {
@@ -60,9 +51,12 @@ func (t *Task) validate() error {
 	return nil
 }
 
-func (t *Task) marshal() []byte {
-	b, _ := json.Marshal(t)
-	return b
+func (t *Task) marshal() ([]byte, error) {
+	return avro.Marshal(model.TaskSchema, t)
+}
+
+func (t *Task) unmarshal(b []byte) error {
+	return avro.Unmarshal(model.TaskSchema, b, t)
 }
 
 type Status struct {
@@ -70,21 +64,13 @@ type Status struct {
 	Name string
 }
 
-// TaskStatus copies values from TaskManager.Status
-type TaskStatus uint
-
-const (
-	StatusOpen TaskStatus = iota + 1
-	StatusCompleted
-)
-
 // TaskLog contains log of status changes
 type TaskLog struct {
 	gorm.Model
 	AssignedToId uint
 	TaskId       uint
-	StatusId     TaskStatus // uint
-	Message      string     // commit message
+	StatusId     model.TaskStatus // uint
+	Message      string           // commit message
 }
 
 func createDefaultStatuses(db *gorm.DB) {

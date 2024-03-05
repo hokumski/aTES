@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ates/model"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +29,7 @@ func (svc *tmSvc) recordTaskLog(task *Task, message string) error {
 
 // checkAuth checks if current request contain authorization header, sends request to Auth service to check token,
 // and ensures if user has one of the following roles
-func (svc *tmSvc) checkAuth(c echo.Context, availableFor []UserRole) (bool, uint) {
+func (svc *tmSvc) checkAuth(c echo.Context, availableFor []model.UserRole) (bool, uint) {
 	authHeader := c.Request().Header["Authorization"][0]
 	if authHeader == "" {
 		return false, 0
@@ -66,7 +67,7 @@ func (svc *tmSvc) verifyAuth(authz string) (string, error) {
 }
 
 // checkUserRole checks if user with given public identifier belongs to one of the following roles
-func (svc *tmSvc) checkUserRole(publicId string, availableFor []UserRole) (bool, uint) {
+func (svc *tmSvc) checkUserRole(publicId string, availableFor []model.UserRole) (bool, uint) {
 	// could be cached in memory, with invalidation on notification
 	var userFromDb User
 	result := svc.tmDb.First(&userFromDb, "public_id = ?", publicId)
@@ -84,7 +85,7 @@ func (svc *tmSvc) checkUserRole(publicId string, availableFor []UserRole) (bool,
 func (svc *tmSvc) getUserIds() []uint {
 	// could be cached in memory, with invalidation on notification
 	var users []User
-	svc.tmDb.Where("role_id = ?", RoleUser).Find(&users)
+	svc.tmDb.Where("role_id = ?", model.RoleUser).Find(&users)
 	result := make([]uint, len(users))
 	for i, u := range users {
 		result[i] = u.ID

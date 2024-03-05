@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "Task",
+  "fields": [
+    {
+      "name": "tid",
+      "type": "string",
+      "logicalType": "uuid"
+    },
+    {
+      "name": "title",
+      "type": "string"
+    },
+    {
+      "name": "description",
+      "type": "string"
+    },
+    {
+      "name": "statusId",
+      "type": "int"
+    },
+    {
+      "name": "assignedTo",
+      "type": "User"
+    }
+  ]
+}

@@ -3,19 +3,8 @@ package main
 import (
 	"ates/common"
 	"context"
-	"encoding/json"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
-
-type Notification struct {
-	Attributes map[string]string `json:"attributes"`
-	Payload    []byte            `json:"payload"`
-}
-
-func (n *Notification) marshal() []byte {
-	body, _ := json.Marshal(n)
-	return body
-}
 
 // notifyAsync sends notification to Kafka
 func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
@@ -28,12 +17,11 @@ func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interf
 		Value:          nil,
 	}
 
-	attributes := make(map[string]string)
-	attributes["event"] = eventType
+	common.AppendKafkaHeader(&msg, "event", eventType)
 
 	switch e.(type) {
 	case User:
-		attributes["entity"] = "User"
+		common.AppendKafkaHeader(&msg, "entity", "User")
 
 		switch eventType {
 		case "UserCreated":
@@ -43,13 +31,11 @@ func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interf
 				Login:    u.Login,
 				RoleID:   u.RoleID,
 			}
-
-			notification := Notification{
-				Attributes: attributes,
-				Payload:    userForNotify.marshal(),
+			b, err := userForNotify.marshal()
+			if err != nil {
+				svc.logger.Errorf("failed to marshal User %s to avro", u.PublicId)
 			}
-			msg.Value = notification.marshal()
-
+			msg.Value = b
 		}
 	}
 

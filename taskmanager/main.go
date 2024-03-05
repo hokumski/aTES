@@ -113,14 +113,9 @@ func main() {
 	e.POST("/tasks/:tid/complete", app.completeTask) // tid is UUID
 
 	abortReadCh := make(chan bool)
-	abortProcessCh := make(chan bool)
-	incomingNotificationsCh := make(chan Notification, 10)
-	go app.startReadingNotification(incomingNotificationsCh, abortReadCh)
-	go app.processNotifications(incomingNotificationsCh, abortProcessCh)
+	go app.startReadingNotification(abortReadCh)
 
 	e.Logger.Fatal(e.Start(webAddress))
 
 	abortReadCh <- true
-	abortProcessCh <- true
-
 }
