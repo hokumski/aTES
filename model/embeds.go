@@ -5,10 +5,10 @@ import (
 	"github.com/hamba/avro/v2"
 )
 
-//go:embed user.avsc
+//go:embed avro/user.avsc
 var user []byte
 
-//go:embed task.avsc
+//go:embed avro/task.avsc
 var task []byte
 
 var UserSchema, _ = avro.Parse(string(user))
