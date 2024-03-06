@@ -14,7 +14,7 @@ var task []byte
 var UserSchema, _ = avro.Parse(string(user))
 var TaskSchema, _ = avro.Parse(string(task))
 
-func validate() error {
+func Validate() error {
 	var err error
 	UserSchema, err = avro.Parse(string(user))
 	if err != nil {

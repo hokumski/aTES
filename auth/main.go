@@ -55,7 +55,7 @@ func main() {
 
 	// Ensure tables
 	_ = db.AutoMigrate(&User{}, &Role{})
-	//createDefaultRoles(db)
+	createDefaultRoles(db)
 
 	clientStore := NewClientStore(db)
 

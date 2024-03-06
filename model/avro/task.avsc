@@ -1,5 +1,6 @@
 {
   "type": "record",
+  "namespace": "ates",
   "name": "Task",
   "fields": [
     {
@@ -21,7 +22,7 @@
     },
     {
       "name": "assignedTo",
-      "type": "User"
+      "type": "ates.User"
     }
   ]
 }

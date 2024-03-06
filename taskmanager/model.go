@@ -59,6 +59,13 @@ func (t *Task) unmarshal(b []byte) error {
 	return avro.Unmarshal(model.TaskSchema, b, t)
 }
 
+func (t *Task) load(svc *tmSvc) {
+	svc.tmDb.
+		Preload("AssignedTo").
+		Where("id = ?", t.ID).
+		Find(&t)
+}
+
 type Status struct {
 	gorm.Model
 	Name string

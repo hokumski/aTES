@@ -2,14 +2,13 @@ package main
 
 import (
 	"ates/common"
-	"context"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 // notifyAsync sends notification to Kafka
-func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
+func (svc *authSvc) notifyAsync(eventType string, e interface{}) {
 
-	topic := "user_events"
+	topic := "user.lifecycle"
 
 	msg := kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
@@ -18,13 +17,12 @@ func (svc *authSvc) notifyAsync(ctx *context.Context, eventType string, e interf
 	}
 
 	common.AppendKafkaHeader(&msg, "event", eventType)
+	common.AppendKafkaHeader(&msg, "producer", "Auth")
 
 	switch e.(type) {
 	case User:
-		common.AppendKafkaHeader(&msg, "entity", "User")
-
 		switch eventType {
-		case "UserCreated":
+		case "User.Created":
 			u := e.(User)
 			userForNotify := User{
 				PublicId: u.PublicId,

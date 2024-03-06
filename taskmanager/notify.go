@@ -3,7 +3,6 @@ package main
 import (
 	"ates/common"
 	"ates/model"
-	"context"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/hamba/avro/v2"
 	"sync"
@@ -24,9 +23,16 @@ func getTaskForNotification(task *Task) Task {
 }
 
 // notifyAsync sends notification to Kafka
-func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
+func (svc *tmSvc) notifyAsync(eventType string, e interface{}) {
 
-	topic := "taskmanager_events"
+	// Important: right now we are sending all events in a single topic,
+	// not separating CUD (create-update-delete) and BE (business events).
+	// That will be a part of future refactoring (maybe)
+
+	// Also, library confluent-kafka-go has no publicly exposed batch methods.
+	// In the contrast, segmentio/kafka-go does have, but we use Confluent to work with SchemaRegistry.
+
+	topic := "task.lifecycle"
 
 	msg := kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
@@ -35,21 +41,21 @@ func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interfac
 	}
 
 	common.AppendKafkaHeader(&msg, "event", eventType)
+	common.AppendKafkaHeader(&msg, "producer", "TaskManager")
 
 	switch e.(type) {
-	case []Task:
-		// ...
 	case Task:
-		common.AppendKafkaHeader(&msg, "entity", "Task")
 
 		switch eventType {
-		case "TaskCreated", "TaskCompleted", "TaskReassigned":
+		case "Task.Created", "Task.Completed", "Task.Reassigned":
 
 			t := e.(Task)
+			t.load(svc)
 			taskForNotification := getTaskForNotification(&t)
 			b, err := taskForNotification.marshal()
 			if err != nil {
-				svc.logger.Errorf("failed to marshal Task %s to avro", t.PublicId)
+				svc.logger.Errorf("failed to marshal Task %s to avro: %s", t.PublicId, err.Error())
+				return
 			}
 			msg.Value = b
 
@@ -91,17 +97,9 @@ func (svc *tmSvc) startReadingNotification(abortCh <-chan bool) {
 				svc.logger.Infof("missing event header in the message %s, skipping", msg.Key)
 				continue
 			}
-			eventEntity, err := common.GetKafkaHeader(msg, "entity")
-			if err != nil {
-				svc.logger.Infof("missing entity header in the message %s, skipping", msg.Key)
-				continue
-			}
 
 			switch eventType {
-			case "UserCreated":
-				if eventEntity != "User" {
-					continue
-				}
+			case "User.Created":
 				var u User
 				err := avro.Unmarshal(model.UserSchema, msg.Value, &u)
 				if err != nil {

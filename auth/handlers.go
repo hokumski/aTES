@@ -16,7 +16,6 @@ func (svc *authSvc) registerUser(c echo.Context) error {
 	// Everybody can add User: kind of self-registration
 	// todo: only users can self-register, need AuthZ for adding another roles
 
-	ctx := context.Background()
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		svc.logger.Error(err)
@@ -52,7 +51,7 @@ func (svc *authSvc) registerUser(c echo.Context) error {
 		result = svc.userDb.First(&userFromDb, "login = ?", u.Login)
 
 		if result.RowsAffected == 1 {
-			go svc.notifyAsync(&ctx, "UserCreated", userFromDb)
+			go svc.notifyAsync("User.Created", userFromDb)
 			return c.JSON(http.StatusOK, userFromDb)
 		}
 	}

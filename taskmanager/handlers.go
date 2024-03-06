@@ -50,8 +50,7 @@ func (svc *tmSvc) newTask(c echo.Context) error {
 
 	if err == nil {
 		svc.logger.Infof("New task created by user#%d", userId)
-		//ctx := context.Background()
-		//go svc.notifyAsync(&ctx, "TaskCreated", task)
+		go svc.notifyAsync("Task.Created", task)
 		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "task created"))
 	}
 
@@ -133,8 +132,7 @@ func (svc *tmSvc) completeTask(c echo.Context) error {
 
 	if err == nil {
 		svc.logger.Infof("task %s is set completed", tid)
-		//ctx := context.Background()
-		//go svc.notifyAsync(&ctx, "TaskCompleted", task)
+		go svc.notifyAsync("Task.Completed", task)
 		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "task completed"))
 	}
 
@@ -178,13 +176,10 @@ func (svc *tmSvc) reassignTasks(c echo.Context) error {
 
 	if err == nil {
 		svc.logger.Infof("%d task are reassigned", len(tasks))
-		//ctx := context.Background()
-		// todo: choose one of:
-		//for _, task := range tasks {
-		//	go svc.notifyAsync(&ctx, "TaskReassigned", task)
-		//}
-		// OR (need to implement msg... on notifyAsync)
-		//go svc.notifyAsync(&ctx, "TaskReassigned", tasks)
+		// do we need to limit number of goroutines here?
+		for _, task := range tasks {
+			go svc.notifyAsync("Task.Reassigned", task)
+		}
 
 		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "tasks reassigned"))
 	}
