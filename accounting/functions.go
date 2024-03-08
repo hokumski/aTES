@@ -11,12 +11,16 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"time"
 )
 
 // checkAuth checks if current request contain authorization header, sends request to Auth service to check token,
 // and ensures if user has one of the following roles
 func (svc *accSvc) checkAuth(c echo.Context, availableFor []model.UserRole) (bool, uint) {
-	authHeader := c.Request().Header["Authorization"][0]
+	var authHeader string
+	if c.Request().Header["Authorization"] != nil {
+		authHeader = c.Request().Header["Authorization"][0]
+	}
 	if authHeader == "" {
 		return false, 0
 	}
@@ -209,4 +213,60 @@ func (svc *accSvc) addOperation(userId, taskId int, operationType model.AccountO
 	}
 
 	return err
+}
+
+func (svc *accSvc) createBillingCycle() error {
+
+	bc := BillingCycle{
+		Day: time.Now().UTC(),
+	}
+
+	// Actually, GORM transaction doesn't work like transaction
+	// Rollback after error on addOperation doesn't work!
+	err := svc.accDb.Transaction(func(tx *gorm.DB) error {
+		result := svc.accDb.Create(&bc)
+		if result.RowsAffected == 1 {
+			svc.logger.Infof("Created billing cycle record for %s", bc.Day)
+		} else {
+			svc.logger.Errorf("Failed to create billing cycle")
+			return errors.New("failed to create billing cycle")
+		}
+
+		// selecting all account with positive balance
+		var accs []Account
+		result = svc.accDb.Where("balance > 0").Find(&accs)
+		if result.RowsAffected > 0 {
+			// create WagePayment for every
+			for _, acc := range accs {
+				// this also modifies balance
+				_ = svc.payWage(acc.UserID, acc.Balance) // does nothing
+				// 1 is hardcode
+				err := svc.addOperation(acc.UserID, 0, model.WagePayment, 0, acc.Balance, fmt.Sprintf("Wage %d is paid", acc.Balance))
+				if err != nil {
+					tx.Rollback()
+					return err
+				}
+			}
+		}
+
+		// set current billing cycle for account logs without it (including WagePayment created right before)
+		// error here, now we use " = 0 " instead of "is null", because GORM can't create appropriate tables
+		result = svc.accDb.Model(&AccountLog{}).Where("billing_cycle_id = ?", 0).Update("billing_cycle_id", bc.ID)
+		var log []AccountLog
+		svc.accDb.Where("billing_cycle_id = ?", bc.ID).Find(&log)
+		for _, a := range log {
+			go svc.notifyAsync("AccountLog.Updated", a)
+		}
+
+		return nil
+	})
+	if err == nil {
+		//go svc.notifyAsync("AccountLog.Created", entry)
+	}
+
+	return nil
+}
+
+func (svc *accSvc) payWage(userId int, balance int) error {
+	return nil
 }

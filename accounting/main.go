@@ -89,8 +89,12 @@ func main() {
 	}
 
 	// Ensure tables
-	_ = db.AutoMigrate(&User{}, &Task{}, &BillingCycle{}, &Account{}, &AccountLog{}, &OperationType{})
+	// _ = db.AutoMigrate(&User{}, &Task{}, &BillingCycle{}, &Account{}, &AccountLog{}, &OperationType{})
 	//createDefaultOperations(db)
+
+	// todo: find a way to create GORM table without key and constraint
+	// alter table account_logs drop constraint fk_account_logs_task
+	// alter table account_logs drop key fk_account_logs_task;
 
 	app := accSvc{
 		logger:     logger,
@@ -105,11 +109,14 @@ func main() {
 		kafkaConsumer: kafkaConsumer,
 	}
 
-	e.GET("/accounts/log/my", nil)
-	e.GET("/accounts/balance/my", nil)
+	e.GET("/log/my", app.getLog)
+	e.GET("/log/:day", app.getLogOnDay)
+	e.GET("/balance/my", app.getBalance)
 
-	e.GET("/income/today", nil)
-	e.GET("/income/:day", nil)
+	e.GET("/income/today", app.getIncome)
+	e.GET("/income/:day", app.getIncomeOnDay)
+
+	e.POST("/closeday", app.closeDay)
 
 	abortReadCh := make(chan bool)
 	go app.startReadingNotification(abortReadCh)

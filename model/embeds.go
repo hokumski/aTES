@@ -11,7 +11,7 @@ var user []byte
 //go:embed avro/task.avsc
 var task []byte
 
-//go:embed avro/accountlog.avro
+//go:embed avro/accountlog.avsc
 var accountLog []byte
 
 var UserSchema, _ = avro.Parse(string(user))

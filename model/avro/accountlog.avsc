@@ -4,6 +4,10 @@
   "name": "AccountLog",
   "fields": [
     {
+      "name": "logId",
+      "type": "int"
+    },
+    {
       "name": "taskId",
       "type": "int"
     },

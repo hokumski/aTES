@@ -11,6 +11,7 @@ type AuthVerification struct {
 
 type AccountLog struct {
 	gorm.Model
+	LogID           int                        `gorm:"logId" avro:"logId"`
 	UserID          int                        `avro:"userId"`
 	TaskID          int                        `avro:"taskId"`
 	BillingCycleID  int                        `avro:"billingCycleId"`

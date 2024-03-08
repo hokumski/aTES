@@ -30,7 +30,10 @@ func (svc *tmSvc) recordTaskLog(task *Task, message string) error {
 // checkAuth checks if current request contain authorization header, sends request to Auth service to check token,
 // and ensures if user has one of the following roles
 func (svc *tmSvc) checkAuth(c echo.Context, availableFor []model.UserRole) (bool, uint) {
-	authHeader := c.Request().Header["Authorization"][0]
+	var authHeader string
+	if c.Request().Header["Authorization"] != nil {
+		authHeader = c.Request().Header["Authorization"][0]
+	}
 	if authHeader == "" {
 		return false, 0
 	}

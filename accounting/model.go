@@ -14,13 +14,12 @@ type AuthVerification struct {
 
 type BillingCycle struct {
 	gorm.Model `json:"-"`
-	Start      time.Time
-	End        time.Time
+	Day        time.Time
 }
 
 type Account struct {
 	gorm.Model `json:"-"`
-	UserID     int
+	UserID     int `json:"-"`
 	User       User
 	Balance    int
 }
@@ -43,12 +42,13 @@ func (a *Account) load(svc *accSvc) error {
 }
 
 type AccountLog struct {
-	gorm.Model
-	UserID          int                        `avro:"userId"`
-	User            User                       `avro:"-"`
-	TaskID          int                        `avro:"taskId"`
-	Task            Task                       `avro:"-"`
-	BillingCycleID  int                        `avro:"billingCycleId"`
+	gorm.Model      `json:"-"`
+	LogID           int                        `gorm:"-" avro:"logId" json:"-"`
+	UserID          int                        `json:"-" avro:"userId"`
+	User            User                       `json:"-" avro:"-"`
+	TaskID          int                        `json:"-" avro:"taskId"`
+	Task            *Task                      `avro:"-"`
+	BillingCycleID  int                        `json:"-" avro:"billingCycleId"`
 	OperationTypeID model.AccountOperationType `avro:"operationId"`
 	Debit           int                        `avro:"debit"`
 	Credit          int                        `avro:"credit"`
@@ -57,6 +57,7 @@ type AccountLog struct {
 }
 
 func (a *AccountLog) marshal() ([]byte, error) {
+	a.LogID = int(a.ID)
 	return avro.Marshal(model.AccountLog, a)
 }
 
@@ -91,7 +92,7 @@ type User struct {
 	gorm.Model `json:"-"`
 	PublicId   string         `json:"uid" avro:"uid"`
 	Login      string         `json:"login" avro:"login"`
-	RoleID     model.UserRole `json:"roleId" avro:"roleId"` // uint
+	RoleID     model.UserRole `json:"roleId" avro:"roleId"`
 }
 
 func (u *User) load(svc *accSvc) {
@@ -112,9 +113,9 @@ type Task struct {
 	PublicId         string           `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
 	Title            string           `json:"title" avro:"title"`
 	Description      string           `json:"description" avro:"description"`
-	StatusID         model.TaskStatus `json:"statusId" avro:"statusId"` // uint
+	StatusID         model.TaskStatus `json:"statusId" avro:"statusId"`
 	AssignedToID     int              `json:"-"`
-	AssignedTo       User             `gorm:"-" json:"assignedTo" avro:"assignedTo"`
+	AssignedTo       User             `gorm:"-" json:"-" avro:"assignedTo"`
 	CostOfAssignment int              // set in Accounting
 	CompletionReward int              // set in Accounting
 }

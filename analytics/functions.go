@@ -14,7 +14,10 @@ import (
 // checkAuth checks if current request contain authorization header, sends request to Auth service to check token,
 // and ensures if user has one of the following roles
 func (svc *anSvc) checkAuth(c echo.Context, availableFor []model.UserRole) (bool, uint) {
-	authHeader := c.Request().Header["Authorization"][0]
+	var authHeader string
+	if c.Request().Header["Authorization"] != nil {
+		authHeader = c.Request().Header["Authorization"][0]
+	}
 	if authHeader == "" {
 		return false, 0
 	}
@@ -100,6 +103,27 @@ func (svc *anSvc) createAccountLog(avroPayload []byte) error {
 	return nil
 }
 
-func (svc *anSvc) updateAccountLog(payload []byte) error {
+func (svc *anSvc) updateAccountLog(avroPayload []byte) error {
+	var a, adb AccountLog
+	err := avro.Unmarshal(model.AccountLog, avroPayload, &a)
+	if err != nil {
+		svc.logger.Errorf("Failed to unmarshal avro payload of AccountLog")
+		return err
+	}
+	logId := a.LogID
+	if logId == 0 {
+		svc.logger.Errorf("Missing LogId in payload of AccountLog")
+		return errors.New("missing LogId")
+	}
+
+	result := svc.anDb.Where("log_id = ?", logId).First(&adb)
+	if result.RowsAffected == 1 {
+		_ = avro.Unmarshal(model.AccountLog, avroPayload, &adb)
+		svc.anDb.Save(&adb)
+	} else {
+		svc.logger.Errorf("Record for LogId=%d not found", logId)
+		return errors.New("record for LogId not found")
+	}
+
 	return nil
 }

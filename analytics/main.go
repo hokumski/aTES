@@ -54,7 +54,7 @@ func main() {
 		os.Exit(-1)
 	}
 
-	err = kafkaConsumer.SubscribeTopics([]string{"accountlog.lifecycle"}, nil)
+	err = kafkaConsumer.SubscribeTopics([]string{"user.lifecycle", "accountlog.lifecycle"}, nil)
 	if err != nil {
 		logger.Fatalf("Failed to subscribe to necessary Kafka topics")
 		os.Exit(-1)
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	// Ensure tables
-	_ = db.AutoMigrate(&AccountLog{})
+	_ = db.AutoMigrate(&User{}, &AccountLog{})
 
 	app := anSvc{
 		logger:     logger,
