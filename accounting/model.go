@@ -3,6 +3,7 @@ package main
 import (
 	"ates/model"
 	"github.com/go-oauth2/oauth2/v4/errors"
+	"github.com/hamba/avro/v2"
 	"gorm.io/gorm"
 	"time"
 )
@@ -19,7 +20,7 @@ type BillingCycle struct {
 
 type Account struct {
 	gorm.Model `json:"-"`
-	UserID     uint
+	UserID     int
 	User       User
 	Balance    int
 }
@@ -42,18 +43,21 @@ func (a *Account) load(svc *accSvc) error {
 }
 
 type AccountLog struct {
-	gorm.Model      `json:"-"`
-	UserID          uint
-	User            User
-	TaskID          uint
-	Task            Task
-	BillingCycleID  uint
-	OperationTypeID uint
-	OperationType   model.AccountOperationType
-	Debit           uint
-	Credit          uint
-	Message         string
-	Balance         int
+	gorm.Model
+	UserID          int                        `avro:"userId"`
+	User            User                       `avro:"-"`
+	TaskID          int                        `avro:"taskId"`
+	Task            Task                       `avro:"-"`
+	BillingCycleID  int                        `avro:"billingCycleId"`
+	OperationTypeID model.AccountOperationType `avro:"operationId"`
+	Debit           int                        `avro:"debit"`
+	Credit          int                        `avro:"credit"`
+	Message         string                     `avro:"-"`
+	Balance         int                        `avro:"balance"`
+}
+
+func (a *AccountLog) marshal() ([]byte, error) {
+	return avro.Marshal(model.AccountLog, a)
 }
 
 type OperationType struct {
@@ -109,10 +113,10 @@ type Task struct {
 	Title            string           `json:"title" avro:"title"`
 	Description      string           `json:"description" avro:"description"`
 	StatusID         model.TaskStatus `json:"statusId" avro:"statusId"` // uint
-	AssignedToID     uint             `json:"-"`
+	AssignedToID     int              `json:"-"`
 	AssignedTo       User             `gorm:"-" json:"assignedTo" avro:"assignedTo"`
-	CostOfAssignment uint             // set in Accounting
-	CompletionReward uint             // set in Accounting
+	CostOfAssignment int              // set in Accounting
+	CompletionReward int              // set in Accounting
 }
 
 func (t *Task) loadWithPublicId(svc *accSvc, publicId string) error {

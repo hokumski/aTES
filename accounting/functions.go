@@ -85,7 +85,7 @@ func (svc *accSvc) createUser(avroPayload []byte) error {
 			return errors.New("failed to create user")
 		}
 		a := Account{
-			UserID:  u.ID,
+			UserID:  int(u.ID),
 			Balance: 0,
 		}
 		result = svc.accDb.Create(&a)
@@ -116,9 +116,9 @@ func (svc *accSvc) createTask(avroPayload []byte) error {
 		return err
 	}
 
-	t.AssignedToID = u.ID
-	t.CostOfAssignment = uint(10 + rand.Intn(10)) // 10..20
-	t.CompletionReward = uint(20 + rand.Intn(20)) // 20..40
+	t.AssignedToID = int(u.ID)
+	t.CostOfAssignment = 10 + rand.Intn(10) // 10..20
+	t.CompletionReward = 20 + rand.Intn(20) // 20..40
 
 	err = svc.accDb.Transaction(func(tx *gorm.DB) error {
 		result := svc.accDb.Create(&t)
@@ -128,7 +128,7 @@ func (svc *accSvc) createTask(avroPayload []byte) error {
 			svc.logger.Errorf("Failed to create task")
 			return errors.New("failed to create task")
 		}
-		return svc.addOperation(u.ID, t.ID, model.CostOfAssignment, 0, int(t.CostOfAssignment),
+		return svc.addOperation(int(u.ID), int(t.ID), model.CostOfAssignment, 0, int(t.CostOfAssignment),
 			fmt.Sprintf("Deducted %d on assignment task %d", t.CostOfAssignment, t.ID))
 	})
 
@@ -159,7 +159,7 @@ func (svc *accSvc) completeTask(tid, uid string) error {
 			return errors.New("failed to complete task")
 		}
 
-		return svc.addOperation(task.AssignedToID, task.ID, model.CompletionReward, int(task.CompletionReward), 0,
+		return svc.addOperation(task.AssignedToID, int(task.ID), model.CompletionReward, int(task.CompletionReward), 0,
 			fmt.Sprintf("Added %d on completion task %d", task.CompletionReward, task.ID))
 	})
 
@@ -167,9 +167,9 @@ func (svc *accSvc) completeTask(tid, uid string) error {
 }
 
 // recordTaskLog adds log record to database, and updates Account balance
-func (svc *accSvc) addOperation(userId, taskId uint, operationType model.AccountOperationType, debit, credit int, message string) error {
+func (svc *accSvc) addOperation(userId, taskId int, operationType model.AccountOperationType, debit, credit int, message string) error {
 
-	a := Account{UserID: userId}
+	a := Account{UserID: int(userId)}
 	err := a.load(svc)
 	if err != nil {
 		return err
@@ -177,11 +177,11 @@ func (svc *accSvc) addOperation(userId, taskId uint, operationType model.Account
 
 	newBalance := a.Balance + debit - credit
 	entry := AccountLog{
-		UserID:          userId,
+		UserID:          int(userId),
 		TaskID:          taskId,
-		OperationTypeID: uint(operationType),
-		Debit:           uint(debit),
-		Credit:          uint(credit),
+		OperationTypeID: operationType,
+		Debit:           debit,
+		Credit:          credit,
 		Message:         message,
 		Balance:         newBalance,
 	}
@@ -204,5 +204,9 @@ func (svc *accSvc) addOperation(userId, taskId uint, operationType model.Account
 		}
 		return nil
 	})
+	if err == nil {
+		go svc.notifyAsync("AccountLog.Created", entry)
+	}
+
 	return err
 }

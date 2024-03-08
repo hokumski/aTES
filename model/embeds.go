@@ -11,8 +11,12 @@ var user []byte
 //go:embed avro/task.avsc
 var task []byte
 
+//go:embed avro/accountlog.avro
+var accountLog []byte
+
 var UserSchema, _ = avro.Parse(string(user))
 var TaskSchema, _ = avro.Parse(string(task))
+var AccountLog, _ = avro.Parse(string(accountLog))
 
 func Validate() error {
 	var err error
@@ -21,6 +25,10 @@ func Validate() error {
 		return err
 	}
 	TaskSchema, err = avro.Parse(string(task))
+	if err != nil {
+		return err
+	}
+	AccountLog, err = avro.Parse(string(accountLog))
 	if err != nil {
 		return err
 	}

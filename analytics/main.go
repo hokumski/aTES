@@ -11,27 +11,26 @@ import (
 	"os"
 )
 
-type accSvc struct {
+type anSvc struct {
 	logger         *zap.SugaredLogger
-	accDb          *gorm.DB
+	anDb           *gorm.DB
 	authServer     string
 	authHttpClient *http.Client
-	kafkaProducer  *kafka.Producer
 	kafkaConsumer  *kafka.Consumer
 }
 
 func main() {
 	zapLogger := zap.New(common.GetZapCore(true))
 	logger := zapLogger.Sugar()
-	logger.Info("Starting aTES.Accounting service")
+	logger.Info("Starting aTES.Analytics service")
 
-	webAddress := os.Getenv("ATES_ACC_SERVER")
+	webAddress := os.Getenv("ATES_AN_SERVER")
 	if webAddress == "" {
-		webAddress = ":7002"
+		webAddress = ":7003"
 	}
-	mysqlDsn := os.Getenv("ATES_ACC_MYSQL")
+	mysqlDsn := os.Getenv("ATES_AN_MYSQL")
 	if mysqlDsn == "" {
-		logger.Fatalf("Missing mysql dsn string in ATES_ACC_MYSQL env")
+		logger.Fatalf("Missing mysql dsn string in ATES_AN_MYSQL env")
 		os.Exit(-1)
 	}
 	authServer := os.Getenv("ATES_AUTH_SERVER")
@@ -47,7 +46,7 @@ func main() {
 
 	kafkaConsumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": "localhost",
-		"group.id":          "Accounting",
+		"group.id":          "Analytics",
 		"auto.offset.reset": "earliest",
 	})
 	if err != nil {
@@ -55,30 +54,12 @@ func main() {
 		os.Exit(-1)
 	}
 
-	err = kafkaConsumer.SubscribeTopics([]string{"user.lifecycle", "task.lifecycle"}, nil)
+	err = kafkaConsumer.SubscribeTopics([]string{"accountlog.lifecycle"}, nil)
 	if err != nil {
 		logger.Fatalf("Failed to subscribe to necessary Kafka topics")
 		os.Exit(-1)
 	}
 
-	kafkaProducer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"})
-	if err != nil {
-		logger.Fatalf("Failed to initialize Kafka Producer")
-		os.Exit(-1)
-	}
-	defer kafkaProducer.Close()
-	go func() {
-		for e := range kafkaProducer.Events() {
-			switch ev := e.(type) {
-			case *kafka.Message:
-				if ev.TopicPartition.Error != nil {
-					logger.Errorf("Delivery failed: %v\n", ev.TopicPartition)
-				} else {
-					logger.Debugf("Delivered message to %v\n", ev.TopicPartition)
-				}
-			}
-		}
-	}()
 	e := common.GetNewEcho(logger)
 	e.Use(middleware.Recover())
 
@@ -89,27 +70,21 @@ func main() {
 	}
 
 	// Ensure tables
-	_ = db.AutoMigrate(&User{}, &Task{}, &BillingCycle{}, &Account{}, &AccountLog{}, &OperationType{})
-	//createDefaultOperations(db)
+	_ = db.AutoMigrate(&AccountLog{})
 
-	app := accSvc{
+	app := anSvc{
 		logger:     logger,
-		accDb:      db,
+		anDb:       db,
 		authServer: common.EnsureServerProtocol(authServer),
 		authHttpClient: &http.Client{
 			Transport: &http.Transport{
 				//TLSClientConfig: tlsConfig,
 			},
 		},
-		kafkaProducer: kafkaProducer,
 		kafkaConsumer: kafkaConsumer,
 	}
 
-	e.GET("/accounts/log/my", nil)
-	e.GET("/accounts/balance/my", nil)
-
-	e.GET("/income/today", nil)
-	e.GET("/income/:day", nil)
+	e.GET("/analytics/today", nil)
 
 	abortReadCh := make(chan bool)
 	go app.startReadingNotification(abortReadCh)

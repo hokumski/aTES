@@ -9,7 +9,45 @@ import (
 	"time"
 )
 
-// startReadingNotification reads topics from Kafka, constructs Notification and sends to notification channel
+// notifyAsync sends notification to Kafka
+func (svc *accSvc) notifyAsync(eventType string, e interface{}) {
+
+	switch e.(type) {
+	case AccountLog:
+
+		topic := "accountlog.lifecycle"
+		msg := kafka.Message{
+			TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+			Key:            []byte(common.GenerateRandomString(10)),
+			Value:          nil,
+		}
+
+		common.AppendKafkaHeader(&msg, "event", eventType)
+		common.AppendKafkaHeader(&msg, "producer", "Accounting")
+
+		switch eventType {
+		case "AccountLog.Created", "AccountLog.Updated":
+			a := e.(AccountLog)
+			b, err := a.marshal()
+			if err != nil {
+				svc.logger.Errorf("failed to marshal AccountLog#%d to avro: %s", a.ID, err.Error())
+				return
+			}
+			msg.Value = b
+		}
+
+		if msg.Value != nil {
+			err := svc.kafkaProducer.Produce(&msg, nil)
+			if err != nil {
+				svc.logger.Errorf("Failed to send event notification on %s", eventType)
+				svc.logger.Error(err)
+			}
+		}
+	}
+
+}
+
+// startReadingNotification reads topics from Kafka
 func (svc *accSvc) startReadingNotification(abortCh <-chan bool) {
 	defer func() {
 		_ = svc.kafkaConsumer.Close()

@@ -16,7 +16,7 @@ type User struct {
 	gorm.Model `json:"-"`
 	PublicId   string         `json:"uid" avro:"uid"`
 	Login      string         `json:"login" avro:"login"`
-	RoleID     model.UserRole `json:"roleId" avro:"roleId"` // uint
+	RoleID     model.UserRole `json:"roleId" avro:"roleId"`
 }
 
 type Task struct {
@@ -24,7 +24,7 @@ type Task struct {
 	PublicId     string           `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
 	Title        string           `json:"title" avro:"title"`
 	Description  string           `json:"description" avro:"description"`
-	StatusID     model.TaskStatus `json:"statusId" avro:"statusId"` // uint
+	StatusID     model.TaskStatus `json:"statusId" avro:"statusId"`
 	Status       Status           `json:"-"`
 	AuthorID     uint             `json:"-"`
 	Author       User             `json:"-"`

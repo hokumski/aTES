@@ -1,0 +1,35 @@
+{
+  "type": "record",
+  "namespace": "ates",
+  "name": "AccountLog",
+  "fields": [
+    {
+      "name": "taskId",
+      "type": "int"
+    },
+    {
+      "name": "userId",
+      "type": "int"
+    },
+    {
+      "name": "billingCycleId",
+      "type": "int"
+    },
+    {
+      "name": "operationId",
+      "type": "int"
+    },
+    {
+      "name": "debit",
+      "type": "int"
+    },
+    {
+      "name": "credit",
+      "type": "int"
+    },
+    {
+      "name": "balance",
+      "type": "int"
+    }
+  ]
+}
