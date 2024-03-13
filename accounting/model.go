@@ -111,6 +111,7 @@ func (u *User) loadWithPublicId(svc *accSvc, publicId string) error {
 type Task struct {
 	gorm.Model       `json:"-"`
 	PublicId         string           `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
+	JiraId           string           `json:"jira_id" avro:"jira_id"`
 	Title            string           `json:"title" avro:"title"`
 	Description      string           `json:"description" avro:"description"`
 	StatusID         model.TaskStatus `json:"statusId" avro:"statusId"`

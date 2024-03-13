@@ -27,6 +27,7 @@ func (svc *accSvc) notifyAsync(eventType string, e interface{}) {
 
 		switch eventType {
 		case "AccountLog.Created", "AccountLog.Updated":
+			common.AppendKafkaHeader(&msg, "eventVersion", "v1")
 			a := e.(AccountLog)
 			b, err := a.marshal()
 			if err != nil {
@@ -73,6 +74,7 @@ func (svc *accSvc) startReadingNotification(abortCh <-chan bool) {
 				svc.logger.Infof("missing event header in the message %s, skipping", msg.Key)
 				continue
 			}
+			eventVersion, _ := common.GetKafkaHeader(msg, "eventVersion")
 
 			switch eventType {
 			case "User.Created":
@@ -93,11 +95,11 @@ func (svc *accSvc) startReadingNotification(abortCh <-chan bool) {
 
 				switch eventType {
 				case "Task.Created":
-					err = svc.createTask(msg.Value)
+					err = svc.createTask(msg.Value, eventVersion)
 				case "Task.Completed":
 					err = svc.completeTask(t.PublicId, t.AssignedTo.PublicId)
 				case "Task.Reassigned":
-
+					err = svc.reassignTask(t.PublicId, t.AssignedTo.PublicId)
 				}
 
 				if err != nil {

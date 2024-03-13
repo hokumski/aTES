@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/hamba/avro/v2"
 	"gorm.io/gorm"
+	"strings"
 )
 
 type AuthVerification struct {
@@ -22,6 +23,7 @@ type User struct {
 type Task struct {
 	gorm.Model   `json:"-"`
 	PublicId     string           `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
+	JiraId       string           `json:"jira_id" avro:"jira_id"`
 	Title        string           `json:"title" avro:"title"`
 	Description  string           `json:"description" avro:"description"`
 	StatusID     model.TaskStatus `json:"statusId" avro:"statusId"`
@@ -33,6 +35,9 @@ type Task struct {
 }
 
 func (t *Task) validate() error {
+	if strings.Contains(t.Title, "[") || strings.Contains(t.Title, "]") {
+		return errors.New("task title must not contain []")
+	}
 	if t.Title == "" {
 		return errors.New("task must contain title")
 	}

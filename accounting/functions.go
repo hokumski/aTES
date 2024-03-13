@@ -106,10 +106,15 @@ func (svc *accSvc) createUser(avroPayload []byte) error {
 }
 
 // createTask creates Task basing on Avro payload, sets costs, and deducts cost of assignment from user
-func (svc *accSvc) createTask(avroPayload []byte) error {
+func (svc *accSvc) createTask(avroPayload []byte, version string) error {
 
 	var t Task
-	err := avro.Unmarshal(model.TaskSchema, avroPayload, &t)
+	taskSchema := model.TaskSchema
+	if version == "v1" {
+		taskSchema = model.TaskSchemaV1
+	}
+
+	err := avro.Unmarshal(taskSchema, avroPayload, &t)
 	if err != nil {
 		return err
 	}
@@ -139,7 +144,7 @@ func (svc *accSvc) createTask(avroPayload []byte) error {
 	return err
 }
 
-// completeTask finds Task with public identifier, marks as completed and
+// completeTask finds Task with public identifier, marks as completed
 func (svc *accSvc) completeTask(tid, uid string) error {
 
 	var task Task
@@ -163,8 +168,37 @@ func (svc *accSvc) completeTask(tid, uid string) error {
 			return errors.New("failed to complete task")
 		}
 
-		return svc.addOperation(task.AssignedToID, int(task.ID), model.CompletionReward, int(task.CompletionReward), 0,
+		return svc.addOperation(task.AssignedToID, int(task.ID), model.CompletionReward, task.CompletionReward, 0,
 			fmt.Sprintf("Added %d on completion task %d", task.CompletionReward, task.ID))
+	})
+
+	return err
+}
+
+// reassignTask finds Task with public identifier, and reassigns it to another user
+func (svc *accSvc) reassignTask(tid, uid string) error {
+
+	var task Task
+	err := task.loadWithPublicId(svc, tid)
+	if err != nil {
+		return err
+	}
+
+	var user User
+	err = user.loadWithPublicId(svc, uid)
+	if err != nil {
+		return err
+	}
+
+	err = svc.accDb.Transaction(func(tx *gorm.DB) error {
+		task.AssignedToID = int(user.ID)
+		result := svc.accDb.Save(&task)
+		if result.RowsAffected != 1 {
+			return errors.New("failed to update task assignee")
+		}
+
+		return svc.addOperation(task.AssignedToID, int(task.ID), model.CostOfAssignment, 0, task.CostOfAssignment,
+			fmt.Sprintf("Deducted %d on reassignment task %d", task.CostOfAssignment, task.ID))
 	})
 
 	return err
@@ -173,7 +207,7 @@ func (svc *accSvc) completeTask(tid, uid string) error {
 // recordTaskLog adds log record to database, and updates Account balance
 func (svc *accSvc) addOperation(userId, taskId int, operationType model.AccountOperationType, debit, credit int, message string) error {
 
-	a := Account{UserID: int(userId)}
+	a := Account{UserID: userId}
 	err := a.load(svc)
 	if err != nil {
 		return err
@@ -181,7 +215,7 @@ func (svc *accSvc) addOperation(userId, taskId int, operationType model.AccountO
 
 	newBalance := a.Balance + debit - credit
 	entry := AccountLog{
-		UserID:          int(userId),
+		UserID:          userId,
 		TaskID:          taskId,
 		OperationTypeID: operationType,
 		Debit:           debit,
@@ -260,11 +294,7 @@ func (svc *accSvc) createBillingCycle() error {
 
 		return nil
 	})
-	if err == nil {
-		//go svc.notifyAsync("AccountLog.Created", entry)
-	}
-
-	return nil
+	return err
 }
 
 func (svc *accSvc) payWage(userId int, balance int) error {

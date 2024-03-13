@@ -28,3 +28,14 @@ type User struct {
 	Login      string         `json:"login" avro:"login"`
 	RoleID     model.UserRole `json:"roleId" avro:"roleId"`
 }
+
+type TodayMetrics struct {
+	ManagementProfit         int `json:"managementProfit"`
+	UsersWithNegativeBalance int `json:"usersWithNegativeBalance"`
+}
+
+type ExpensiveMetrics struct {
+	DayFrom string `json:"dayFrom"`
+	DayTo   string `json:"dayTo"`
+	Cost    int    `json:"cost"`
+}

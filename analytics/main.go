@@ -84,7 +84,9 @@ func main() {
 		kafkaConsumer: kafkaConsumer,
 	}
 
-	e.GET("/analytics/today", nil)
+	e.GET("/analytics/today", app.getToday)
+	e.GET("/analytics/expensive/:dayFrom", app.getExpensive)
+	e.GET("/analytics/expensive/:dayFrom/:dayTo", app.getExpensive)
 
 	abortReadCh := make(chan bool)
 	go app.startReadingNotification(abortReadCh)

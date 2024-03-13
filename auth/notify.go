@@ -21,6 +21,7 @@ func (svc *authSvc) notifyAsync(eventType string, e interface{}) {
 
 	switch e.(type) {
 	case User:
+		common.AppendKafkaHeader(&msg, "eventVersion", "v1")
 		switch eventType {
 		case "User.Created":
 			u := e.(User)

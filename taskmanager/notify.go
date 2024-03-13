@@ -13,6 +13,7 @@ import (
 func getTaskForNotification(task *Task) Task {
 	return Task{
 		PublicId:    task.PublicId,
+		JiraId:      task.JiraId,
 		Title:       task.Title,
 		Description: task.Description,
 		StatusID:    task.StatusID,
@@ -48,6 +49,7 @@ func (svc *tmSvc) notifyAsync(eventType string, e interface{}) {
 
 		switch eventType {
 		case "Task.Created", "Task.Completed", "Task.Reassigned":
+			common.AppendKafkaHeader(&msg, "eventVersion", "v2")
 
 			t := e.(Task)
 			t.load(svc)

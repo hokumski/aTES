@@ -1,0 +1,32 @@
+{
+  "type": "record",
+  "namespace": "ates",
+  "name": "Task",
+  "fields": [
+    {
+      "name": "tid",
+      "type": "string",
+      "logicalType": "uuid"
+    },
+    {
+      "name": "jira_id",
+      "type": "string"
+    },
+    {
+      "name": "title",
+      "type": "string"
+    },
+    {
+      "name": "description",
+      "type": "string"
+    },
+    {
+      "name": "statusId",
+      "type": "int"
+    },
+    {
+      "name": "assignedTo",
+      "type": "ates.User"
+    }
+  ]
+}

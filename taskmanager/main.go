@@ -93,6 +93,8 @@ func main() {
 	// Ensure tables and model
 	_ = db.AutoMigrate(&User{}, &Task{}, &Status{}, &TaskLog{})
 	//createDefaultStatuses(db)
+	migrateTasksV1toV2(db)
+
 	err = model.Validate()
 	if err != nil {
 		logger.Fatalf("Failed to validate current avro models: %s", err.Error())

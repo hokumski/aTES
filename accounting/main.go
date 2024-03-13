@@ -89,7 +89,8 @@ func main() {
 	}
 
 	// Ensure tables
-	// _ = db.AutoMigrate(&User{}, &Task{}, &BillingCycle{}, &Account{}, &AccountLog{}, &OperationType{})
+	_ = db.AutoMigrate(&User{}, &Task{}, &BillingCycle{}, &Account{}, &OperationType{})
+	//_ = db.AutoMigrate(&AccountLog{})
 	//createDefaultOperations(db)
 
 	// todo: find a way to create GORM table without key and constraint
