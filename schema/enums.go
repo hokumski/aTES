@@ -1,4 +1,4 @@
-package model
+package schema
 
 // UserRole copies values from Auth.Role
 type UserRole int

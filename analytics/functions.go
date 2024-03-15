@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ates/model"
+	"ates/schema"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +13,7 @@ import (
 
 // checkAuth checks if current request contain authorization header, sends request to Auth service to check token,
 // and ensures if user has one of the following roles
-func (svc *anSvc) checkAuth(c echo.Context, availableFor []model.UserRole) (bool, uint) {
+func (svc *anSvc) checkAuth(c echo.Context, availableFor []schema.UserRole) (bool, uint) {
 	var authHeader string
 	if c.Request().Header["Authorization"] != nil {
 		authHeader = c.Request().Header["Authorization"][0]
@@ -54,7 +54,7 @@ func (svc *anSvc) verifyAuth(authz string) (string, error) {
 }
 
 // checkUserRole checks if user with given public identifier belongs to one of the following roles
-func (svc *anSvc) checkUserRole(publicId string, availableFor []model.UserRole) (bool, uint) {
+func (svc *anSvc) checkUserRole(publicId string, availableFor []schema.UserRole) (bool, uint) {
 	// could be cached in memory, with invalidation on notification
 	var userFromDb User
 	result := svc.anDb.First(&userFromDb, "public_id = ?", publicId)
@@ -71,7 +71,7 @@ func (svc *anSvc) checkUserRole(publicId string, availableFor []model.UserRole) 
 // createUser creates User basing on Avro payload, and Account for this user
 func (svc *anSvc) createUser(avroPayload []byte) error {
 	var u User
-	err := avro.Unmarshal(model.UserSchema, avroPayload, &u)
+	err := avro.Unmarshal(schema.UserSchema, avroPayload, &u)
 	if err != nil {
 		svc.logger.Errorf("Failed to unmarshal avro payload of User")
 		return err
@@ -88,7 +88,7 @@ func (svc *anSvc) createUser(avroPayload []byte) error {
 
 func (svc *anSvc) createAccountLog(avroPayload []byte) error {
 	var a AccountLog
-	err := avro.Unmarshal(model.AccountLog, avroPayload, &a)
+	err := avro.Unmarshal(schema.AccountLog, avroPayload, &a)
 	if err != nil {
 		svc.logger.Errorf("Failed to unmarshal avro payload of AccountLog")
 		return err
@@ -105,7 +105,7 @@ func (svc *anSvc) createAccountLog(avroPayload []byte) error {
 
 func (svc *anSvc) updateAccountLog(avroPayload []byte) error {
 	var a, adb AccountLog
-	err := avro.Unmarshal(model.AccountLog, avroPayload, &a)
+	err := avro.Unmarshal(schema.AccountLog, avroPayload, &a)
 	if err != nil {
 		svc.logger.Errorf("Failed to unmarshal avro payload of AccountLog")
 		return err
@@ -118,7 +118,7 @@ func (svc *anSvc) updateAccountLog(avroPayload []byte) error {
 
 	result := svc.anDb.Where("log_id = ?", logId).First(&adb)
 	if result.RowsAffected == 1 {
-		_ = avro.Unmarshal(model.AccountLog, avroPayload, &adb)
+		_ = avro.Unmarshal(schema.AccountLog, avroPayload, &adb)
 		svc.anDb.Save(&adb)
 	} else {
 		svc.logger.Errorf("Record for LogId=%d not found", logId)

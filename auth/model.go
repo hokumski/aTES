@@ -2,7 +2,7 @@ package main
 
 import (
 	"ates/common"
-	"ates/model"
+	"ates/schema"
 	"errors"
 	"github.com/hamba/avro/v2"
 	"gorm.io/gorm"
@@ -14,13 +14,13 @@ type AuthVerification struct {
 
 type User struct {
 	gorm.Model   `json:"-"`
-	PublicId     string         `gorm:"default:(uuid());unique" json:"uid" avro:"uid"`
-	Login        string         `gorm:"unique" json:"login" avro:"login"`
-	Password     string         `gorm:"-" json:"password,omitempty"`
-	PasswordHash string         `json:"-"`
-	PasswordSalt string         `json:"-"`
-	RoleID       model.UserRole `json:"roleId" avro:"roleId"`
-	Role         Role           `json:"-"`
+	PublicId     string          `gorm:"default:(uuid());unique" json:"uid" avro:"uid"`
+	Login        string          `gorm:"unique" json:"login" avro:"login"`
+	Password     string          `gorm:"-" json:"password,omitempty"`
+	PasswordHash string          `json:"-"`
+	PasswordSalt string          `json:"-"`
+	RoleID       schema.UserRole `json:"roleId" avro:"roleId"`
+	Role         Role            `json:"-"`
 }
 
 func (u *User) calculatePasswordHash() error {
@@ -41,11 +41,11 @@ func (u *User) checkPassword(password string) bool {
 }
 
 func (u *User) marshal() ([]byte, error) {
-	return avro.Marshal(model.UserSchema, u)
+	return avro.Marshal(schema.UserSchema, u)
 }
 
 func (u *User) unmarshal(b []byte) error {
-	return avro.Unmarshal(model.UserSchema, b, u)
+	return avro.Unmarshal(schema.UserSchema, b, u)
 }
 
 type Role struct {

@@ -2,7 +2,7 @@ package main
 
 import (
 	"ates/common"
-	"ates/model"
+	"ates/schema"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -95,7 +95,7 @@ func main() {
 	//createDefaultStatuses(db)
 	migrateTasksV1toV2(db)
 
-	err = model.Validate()
+	err = schema.Validate()
 	if err != nil {
 		logger.Fatalf("Failed to validate current avro models: %s", err.Error())
 		os.Exit(-1)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"ates/common"
-	"ates/model"
+	"ates/schema"
 	"errors"
 	"fmt"
 	"github.com/labstack/echo/v4"
@@ -17,7 +17,7 @@ func forbidden(c echo.Context) error {
 
 // newTask creates new task, and assigns it to random user
 func (svc *tmSvc) newTask(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleAdmin, model.RoleUser, model.RoleAccountant, model.RoleManager})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleAdmin, schema.RoleUser, schema.RoleAccountant, schema.RoleManager})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -32,7 +32,7 @@ func (svc *tmSvc) newTask(c echo.Context) error {
 
 	task.AuthorID = userId
 	task.AssignedToID = randomUserId
-	task.StatusID = model.StatusOpen
+	task.StatusID = schema.StatusOpen
 
 	err = task.validate()
 	if err != nil {
@@ -61,7 +61,7 @@ func (svc *tmSvc) newTask(c echo.Context) error {
 
 // getOpenTasks renders tasks of current user with status=Open
 func (svc *tmSvc) getOpenTasks(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleUser})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleUser})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -69,7 +69,7 @@ func (svc *tmSvc) getOpenTasks(c echo.Context) error {
 	var tasks []Task
 	svc.tmDb.
 		Preload("AssignedTo").
-		Where("assigned_to_id = ? and status_id = ?", userId, model.StatusOpen).
+		Where("assigned_to_id = ? and status_id = ?", userId, schema.StatusOpen).
 		Find(&tasks)
 
 	return c.JSON(http.StatusOK, tasks)
@@ -77,7 +77,7 @@ func (svc *tmSvc) getOpenTasks(c echo.Context) error {
 
 // getTask renders task of current user with additional information by id
 func (svc *tmSvc) getTask(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleUser})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleUser})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -101,7 +101,7 @@ func (svc *tmSvc) getTask(c echo.Context) error {
 
 // completeTask sets task status to Complete
 func (svc *tmSvc) completeTask(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleUser})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleUser})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -114,7 +114,7 @@ func (svc *tmSvc) completeTask(c echo.Context) error {
 	var task Task
 	result := svc.tmDb.
 		Preload("AssignedTo").
-		Where("public_id = ? AND assigned_to_id = ? AND status_id = ?", tid, userId, model.StatusOpen).
+		Where("public_id = ? AND assigned_to_id = ? AND status_id = ?", tid, userId, schema.StatusOpen).
 		Find(&task)
 
 	if result.RowsAffected == 0 {
@@ -122,7 +122,7 @@ func (svc *tmSvc) completeTask(c echo.Context) error {
 	}
 
 	err := svc.tmDb.Transaction(func(tx *gorm.DB) error {
-		task.StatusID = model.StatusCompleted
+		task.StatusID = schema.StatusCompleted
 		result = svc.tmDb.Save(&task)
 		if result.RowsAffected != 1 {
 			return errors.New("failed to complete task")
@@ -143,13 +143,13 @@ func (svc *tmSvc) completeTask(c echo.Context) error {
 
 // reassignTasks reassign all tasks with status=Open to users
 func (svc *tmSvc) reassignTasks(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleManager, model.RoleAdmin})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleManager, schema.RoleAdmin})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
 
 	var tasks []Task
-	svc.tmDb.Where("status_id = ?", model.StatusOpen).Find(&tasks)
+	svc.tmDb.Where("status_id = ?", schema.StatusOpen).Find(&tasks)
 	if len(tasks) == 0 {
 		return c.JSON(http.StatusOK, common.FromKeysAndValues("result", "no open tasks to reassign"))
 	}

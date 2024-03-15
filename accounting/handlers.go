@@ -2,7 +2,7 @@ package main
 
 import (
 	"ates/common"
-	"ates/model"
+	"ates/schema"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"time"
@@ -14,7 +14,7 @@ func forbidden(c echo.Context) error {
 
 // getBalance renders current balance of user
 func (svc *accSvc) getBalance(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleUser})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleUser})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -27,7 +27,7 @@ func (svc *accSvc) getBalance(c echo.Context) error {
 
 // getLog renders log of operations on user's account for unfinished billing cycle
 func (svc *accSvc) getLog(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleUser})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleUser})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -38,7 +38,7 @@ func (svc *accSvc) getLog(c echo.Context) error {
 
 // getLog renders log of operations on user's account for billing cycle of certain day
 func (svc *accSvc) getLogOnDay(c echo.Context) error {
-	userIsAllowed, userId := svc.checkAuth(c, []model.UserRole{model.RoleUser})
+	userIsAllowed, userId := svc.checkAuth(c, []schema.UserRole{schema.RoleUser})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -55,7 +55,7 @@ func (svc *accSvc) getLogOnDay(c echo.Context) error {
 
 // getLog renders log of operations on user's account for unfinished billing cycle
 func (svc *accSvc) getIncome(c echo.Context) error {
-	userIsAllowed, _ := svc.checkAuth(c, []model.UserRole{model.RoleAdmin, model.RoleAccountant})
+	userIsAllowed, _ := svc.checkAuth(c, []schema.UserRole{schema.RoleAdmin, schema.RoleAccountant})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -66,7 +66,7 @@ func (svc *accSvc) getIncome(c echo.Context) error {
 
 // getLog renders log of operations on user's account for billing cycle of certain day
 func (svc *accSvc) getIncomeOnDay(c echo.Context) error {
-	userIsAllowed, _ := svc.checkAuth(c, []model.UserRole{model.RoleAdmin, model.RoleAccountant})
+	userIsAllowed, _ := svc.checkAuth(c, []schema.UserRole{schema.RoleAdmin, schema.RoleAccountant})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -131,11 +131,11 @@ func (svc *accSvc) queryIncomeOnDay(day string) (int, error) {
 
 	if day == "" {
 		svc.accDb.Table("account_logs").
-			Where("billing_cycle_id = ? and operation_type_id = ?", 0, model.CostOfAssignment).
+			Where("billing_cycle_id = ? and operation_type_id = ?", 0, schema.CostOfAssignment).
 			Select("sum(credit) as n").Scan(&n)
 		credits = int(n.N)
 		svc.accDb.Table("account_logs").
-			Where("billing_cycle_id = ? and operation_type_id = ?", 0, model.CompletionReward).
+			Where("billing_cycle_id = ? and operation_type_id = ?", 0, schema.CompletionReward).
 			Select("sum(debit) as n").Scan(&n)
 		debits = int(n.N)
 	} else {
@@ -146,11 +146,11 @@ func (svc *accSvc) queryIncomeOnDay(day string) (int, error) {
 		}
 
 		svc.accDb.Table("account_logs").
-			Where("billing_cycle_id IN ? and operation_type_id = ?", bcIds, model.CostOfAssignment).
+			Where("billing_cycle_id IN ? and operation_type_id = ?", bcIds, schema.CostOfAssignment).
 			Select("sum(credit) as n").Scan(&n)
 		credits = int(n.N)
 		svc.accDb.Table("account_logs").
-			Where("billing_cycle_id IN ? and operation_type_id = ?", bcIds, model.CompletionReward).
+			Where("billing_cycle_id IN ? and operation_type_id = ?", bcIds, schema.CompletionReward).
 			Select("sum(debit) as n").Scan(&n)
 		debits = int(n.N)
 	}
@@ -160,7 +160,7 @@ func (svc *accSvc) queryIncomeOnDay(day string) (int, error) {
 
 // closeDay creates billing cycle, sets today as the day of BC, and creates WagePayment operations
 func (svc *accSvc) closeDay(c echo.Context) error {
-	userIsAllowed, _ := svc.checkAuth(c, []model.UserRole{model.RoleAdmin})
+	userIsAllowed, _ := svc.checkAuth(c, []schema.UserRole{schema.RoleAdmin})
 	if !userIsAllowed {
 		return forbidden(c)
 	}

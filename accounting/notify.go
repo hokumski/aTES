@@ -2,7 +2,7 @@ package main
 
 import (
 	"ates/common"
-	"ates/model"
+	"ates/schema"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/hamba/avro/v2"
 	"sync"
@@ -86,7 +86,7 @@ func (svc *accSvc) startReadingNotification(abortCh <-chan bool) {
 
 			case "Task.Created", "Task.Completed", "Task.Reassigned":
 				var t Task
-				err := avro.Unmarshal(model.TaskSchema, msg.Value, &t)
+				err := avro.Unmarshal(schema.TaskSchema, msg.Value, &t)
 
 				if err != nil {
 					svc.logger.Errorf("Failed to process notification on %s: bad payload, %s", eventType, err.Error())

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ates/model"
+	"ates/schema"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +16,7 @@ import (
 
 // checkAuth checks if current request contain authorization header, sends request to Auth service to check token,
 // and ensures if user has one of the following roles
-func (svc *accSvc) checkAuth(c echo.Context, availableFor []model.UserRole) (bool, uint) {
+func (svc *accSvc) checkAuth(c echo.Context, availableFor []schema.UserRole) (bool, uint) {
 	var authHeader string
 	if c.Request().Header["Authorization"] != nil {
 		authHeader = c.Request().Header["Authorization"][0]
@@ -57,7 +57,7 @@ func (svc *accSvc) verifyAuth(authz string) (string, error) {
 }
 
 // checkUserRole checks if user with given public identifier belongs to one of the following roles
-func (svc *accSvc) checkUserRole(publicId string, availableFor []model.UserRole) (bool, uint) {
+func (svc *accSvc) checkUserRole(publicId string, availableFor []schema.UserRole) (bool, uint) {
 	// could be cached in memory, with invalidation on notification
 	var userFromDb User
 	result := svc.accDb.First(&userFromDb, "public_id = ?", publicId)
@@ -74,7 +74,7 @@ func (svc *accSvc) checkUserRole(publicId string, availableFor []model.UserRole)
 // createUser creates User basing on Avro payload, and Account for this user
 func (svc *accSvc) createUser(avroPayload []byte) error {
 	var u User
-	err := avro.Unmarshal(model.UserSchema, avroPayload, &u)
+	err := avro.Unmarshal(schema.UserSchema, avroPayload, &u)
 	if err != nil {
 		return err
 	}
@@ -109,9 +109,9 @@ func (svc *accSvc) createUser(avroPayload []byte) error {
 func (svc *accSvc) createTask(avroPayload []byte, version string) error {
 
 	var t Task
-	taskSchema := model.TaskSchema
+	taskSchema := schema.TaskSchema
 	if version == "v1" {
-		taskSchema = model.TaskSchemaV1
+		taskSchema = schema.TaskSchemaV1
 	}
 
 	err := avro.Unmarshal(taskSchema, avroPayload, &t)
@@ -137,7 +137,7 @@ func (svc *accSvc) createTask(avroPayload []byte, version string) error {
 			svc.logger.Errorf("Failed to create task")
 			return errors.New("failed to create task")
 		}
-		return svc.addOperation(int(u.ID), int(t.ID), model.CostOfAssignment, 0, int(t.CostOfAssignment),
+		return svc.addOperation(int(u.ID), int(t.ID), schema.CostOfAssignment, 0, int(t.CostOfAssignment),
 			fmt.Sprintf("Deducted %d on assignment task %d", t.CostOfAssignment, t.ID))
 	})
 
@@ -162,13 +162,13 @@ func (svc *accSvc) completeTask(tid, uid string) error {
 	}
 
 	err = svc.accDb.Transaction(func(tx *gorm.DB) error {
-		task.StatusID = model.StatusCompleted
+		task.StatusID = schema.StatusCompleted
 		result := svc.accDb.Save(&task)
 		if result.RowsAffected != 1 {
 			return errors.New("failed to complete task")
 		}
 
-		return svc.addOperation(task.AssignedToID, int(task.ID), model.CompletionReward, task.CompletionReward, 0,
+		return svc.addOperation(task.AssignedToID, int(task.ID), schema.CompletionReward, task.CompletionReward, 0,
 			fmt.Sprintf("Added %d on completion task %d", task.CompletionReward, task.ID))
 	})
 
@@ -197,7 +197,7 @@ func (svc *accSvc) reassignTask(tid, uid string) error {
 			return errors.New("failed to update task assignee")
 		}
 
-		return svc.addOperation(task.AssignedToID, int(task.ID), model.CostOfAssignment, 0, task.CostOfAssignment,
+		return svc.addOperation(task.AssignedToID, int(task.ID), schema.CostOfAssignment, 0, task.CostOfAssignment,
 			fmt.Sprintf("Deducted %d on reassignment task %d", task.CostOfAssignment, task.ID))
 	})
 
@@ -205,7 +205,7 @@ func (svc *accSvc) reassignTask(tid, uid string) error {
 }
 
 // recordTaskLog adds log record to database, and updates Account balance
-func (svc *accSvc) addOperation(userId, taskId int, operationType model.AccountOperationType, debit, credit int, message string) error {
+func (svc *accSvc) addOperation(userId, taskId int, operationType schema.AccountOperationType, debit, credit int, message string) error {
 
 	a := Account{UserID: userId}
 	err := a.load(svc)
@@ -275,7 +275,7 @@ func (svc *accSvc) createBillingCycle() error {
 				// this also modifies balance
 				_ = svc.payWage(acc.UserID, acc.Balance) // does nothing
 				// 1 is hardcode
-				err := svc.addOperation(acc.UserID, 0, model.WagePayment, 0, acc.Balance, fmt.Sprintf("Wage %d is paid", acc.Balance))
+				err := svc.addOperation(acc.UserID, 0, schema.WagePayment, 0, acc.Balance, fmt.Sprintf("Wage %d is paid", acc.Balance))
 				if err != nil {
 					tx.Rollback()
 					return err

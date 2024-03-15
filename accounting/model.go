@@ -1,7 +1,7 @@
 package main
 
 import (
-	"ates/model"
+	"ates/schema"
 	"github.com/go-oauth2/oauth2/v4/errors"
 	"github.com/hamba/avro/v2"
 	"gorm.io/gorm"
@@ -43,22 +43,22 @@ func (a *Account) load(svc *accSvc) error {
 
 type AccountLog struct {
 	gorm.Model      `json:"-"`
-	LogID           int                        `gorm:"-" avro:"logId" json:"-"`
-	UserID          int                        `json:"-" avro:"userId"`
-	User            User                       `json:"-" avro:"-"`
-	TaskID          int                        `json:"-" avro:"taskId"`
-	Task            *Task                      `avro:"-"`
-	BillingCycleID  int                        `json:"-" avro:"billingCycleId"`
-	OperationTypeID model.AccountOperationType `avro:"operationId"`
-	Debit           int                        `avro:"debit"`
-	Credit          int                        `avro:"credit"`
-	Message         string                     `avro:"-"`
-	Balance         int                        `avro:"balance"`
+	LogID           int                         `gorm:"-" avro:"logId" json:"-"`
+	UserID          int                         `json:"-" avro:"userId"`
+	User            User                        `json:"-" avro:"-"`
+	TaskID          int                         `json:"-" avro:"taskId"`
+	Task            *Task                       `avro:"-"`
+	BillingCycleID  int                         `json:"-" avro:"billingCycleId"`
+	OperationTypeID schema.AccountOperationType `avro:"operationId"`
+	Debit           int                         `avro:"debit"`
+	Credit          int                         `avro:"credit"`
+	Message         string                      `avro:"-"`
+	Balance         int                         `avro:"balance"`
 }
 
 func (a *AccountLog) marshal() ([]byte, error) {
 	a.LogID = int(a.ID)
-	return avro.Marshal(model.AccountLog, a)
+	return avro.Marshal(schema.AccountLog, a)
 }
 
 type OperationType struct {
@@ -90,9 +90,9 @@ func createDefaultOperations(db *gorm.DB) {
 // User is synced, source is "auth"
 type User struct {
 	gorm.Model `json:"-"`
-	PublicId   string         `json:"uid" avro:"uid"`
-	Login      string         `json:"login" avro:"login"`
-	RoleID     model.UserRole `json:"roleId" avro:"roleId"`
+	PublicId   string          `json:"uid" avro:"uid"`
+	Login      string          `json:"login" avro:"login"`
+	RoleID     schema.UserRole `json:"roleId" avro:"roleId"`
 }
 
 func (u *User) load(svc *accSvc) {
@@ -110,15 +110,15 @@ func (u *User) loadWithPublicId(svc *accSvc, publicId string) error {
 // Task is synced, source is "taskmanager", additional fields here
 type Task struct {
 	gorm.Model       `json:"-"`
-	PublicId         string           `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
-	JiraId           string           `json:"jira_id" avro:"jira_id"`
-	Title            string           `json:"title" avro:"title"`
-	Description      string           `json:"description" avro:"description"`
-	StatusID         model.TaskStatus `json:"statusId" avro:"statusId"`
-	AssignedToID     int              `json:"-"`
-	AssignedTo       User             `gorm:"-" json:"-" avro:"assignedTo"`
-	CostOfAssignment int              // set in Accounting
-	CompletionReward int              // set in Accounting
+	PublicId         string            `gorm:"default:(uuid());unique" json:"tid" avro:"tid"`
+	JiraId           string            `json:"jira_id" avro:"jira_id"`
+	Title            string            `json:"title" avro:"title"`
+	Description      string            `json:"description" avro:"description"`
+	StatusID         schema.TaskStatus `json:"statusId" avro:"statusId"`
+	AssignedToID     int               `json:"-"`
+	AssignedTo       User              `gorm:"-" json:"-" avro:"assignedTo"`
+	CostOfAssignment int               // set in Accounting
+	CompletionReward int               // set in Accounting
 }
 
 func (t *Task) loadWithPublicId(svc *accSvc, publicId string) error {

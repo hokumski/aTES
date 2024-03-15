@@ -2,7 +2,7 @@ package main
 
 import (
 	"ates/common"
-	"ates/model"
+	"ates/schema"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"time"
@@ -18,7 +18,7 @@ type NResult struct {
 
 // getToday renders today's metrics
 func (svc *anSvc) getToday(c echo.Context) error {
-	userIsAllowed, _ := svc.checkAuth(c, []model.UserRole{model.RoleAdmin})
+	userIsAllowed, _ := svc.checkAuth(c, []schema.UserRole{schema.RoleAdmin})
 	if !userIsAllowed {
 		return forbidden(c)
 	}
@@ -63,7 +63,7 @@ func (svc *anSvc) getExpensive(c echo.Context) error {
 	var n NResult
 	svc.anDb.Table("account_logs").
 		Where("operation_type_id = ? and updated_at > ? and updated_at < ?",
-			model.CompletionReward,
+			schema.CompletionReward,
 			dFrom.Format("2006-01-02"), dTo.AddDate(0, 0, 1).Format("2006-01-02")).
 		Select("max(debit) as n").Scan(&n)
 
