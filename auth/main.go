@@ -2,13 +2,13 @@ package main
 
 import (
 	"ates/common"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/go-oauth2/oauth2/v4/errors"
 	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/go-oauth2/oauth2/v4/server"
 	"github.com/go-oauth2/oauth2/v4/store"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -16,10 +16,10 @@ import (
 )
 
 type authSvc struct {
-	logger      *zap.SugaredLogger
-	oauthServer *server.Server
-	userDb      *gorm.DB
-	kafkaWriter *kafka.Writer
+	logger        *zap.SugaredLogger
+	oauthServer   *server.Server
+	userDb        *gorm.DB
+	kafkaProducer *kafka.Producer
 }
 
 func main() {
@@ -55,7 +55,7 @@ func main() {
 
 	// Ensure tables
 	_ = db.AutoMigrate(&User{}, &Role{})
-	//createDefaultRoles(db)
+	createDefaultRoles(db)
 
 	clientStore := NewClientStore(db)
 
@@ -78,25 +78,30 @@ func main() {
 		logger.Errorf("Response Error: %s", re.Error.Error())
 	})
 
-	kafkaWriter := &kafka.Writer{
-		Addr:     kafka.TCP(kafkaAddress),
-		Topic:    "user_events",
-		Balancer: &kafka.LeastBytes{},
+	kafkaProducer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"})
+	if err != nil {
+		logger.Fatalf("Failed to initialize Kafka Producer")
+		os.Exit(-1)
 	}
-	kafkaWriter.AllowAutoTopicCreation = true
-
-	defer func(kafkaWriter *kafka.Writer) {
-		err := kafkaWriter.Close()
-		if err != nil {
-			logger.Error(err)
+	defer kafkaProducer.Close()
+	go func() {
+		for e := range kafkaProducer.Events() {
+			switch ev := e.(type) {
+			case *kafka.Message:
+				if ev.TopicPartition.Error != nil {
+					logger.Errorf("Delivery failed: %v\n", ev.TopicPartition)
+				} else {
+					logger.Debugf("Delivered message to %v\n", ev.TopicPartition)
+				}
+			}
 		}
-	}(kafkaWriter)
+	}()
 
 	app := authSvc{
-		logger:      logger,
-		oauthServer: srv,
-		userDb:      db,
-		kafkaWriter: kafkaWriter,
+		logger:        logger,
+		oauthServer:   srv,
+		userDb:        db,
+		kafkaProducer: kafkaProducer,
 	}
 	srv.SetPasswordAuthorizationHandler(app.checkPassword)
 

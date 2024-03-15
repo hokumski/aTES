@@ -2,7 +2,9 @@ package common
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -13,6 +15,29 @@ import (
 	"strings"
 	"time"
 )
+
+// AppendKafkaHeader appends new header to Kafka message
+func AppendKafkaHeader(msg *kafka.Message, key, value string) {
+	if msg.Headers == nil {
+		msg.Headers = make([]kafka.Header, 0)
+	}
+	msg.Headers = append(msg.Headers, kafka.Header{
+		Key:   key,
+		Value: []byte(value),
+	})
+}
+
+// GetKafkaHeader returns value of Kafka message header with given key, assuming it is a string
+func GetKafkaHeader(msg *kafka.Message, key string) (string, error) {
+	if msg.Headers != nil {
+		for _, h := range msg.Headers {
+			if h.Key == key {
+				return string(h.Value), nil
+			}
+		}
+	}
+	return "", errors.New("header not found")
+}
 
 // IsUUID checks if string is uid-format
 func IsUUID(uid string) bool {

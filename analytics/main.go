@@ -2,7 +2,6 @@ package main
 
 import (
 	"ates/common"
-	"ates/schema"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -12,27 +11,26 @@ import (
 	"os"
 )
 
-type tmSvc struct {
+type anSvc struct {
 	logger         *zap.SugaredLogger
-	tmDb           *gorm.DB
+	anDb           *gorm.DB
 	authServer     string
 	authHttpClient *http.Client
-	kafkaProducer  *kafka.Producer
 	kafkaConsumer  *kafka.Consumer
 }
 
 func main() {
 	zapLogger := zap.New(common.GetZapCore(true))
 	logger := zapLogger.Sugar()
-	logger.Info("Starting aTES.TaskManager service")
+	logger.Info("Starting aTES.Analytics service")
 
-	webAddress := os.Getenv("ATES_TM_SERVER")
+	webAddress := os.Getenv("ATES_AN_SERVER")
 	if webAddress == "" {
-		webAddress = ":7001"
+		webAddress = ":7003"
 	}
-	mysqlDsn := os.Getenv("ATES_TM_MYSQL")
+	mysqlDsn := os.Getenv("ATES_AN_MYSQL")
 	if mysqlDsn == "" {
-		logger.Fatalf("Missing mysql dsn string in ATES_TM_MYSQL env")
+		logger.Fatalf("Missing mysql dsn string in ATES_AN_MYSQL env")
 		os.Exit(-1)
 	}
 	authServer := os.Getenv("ATES_AUTH_SERVER")
@@ -46,28 +44,9 @@ func main() {
 		os.Exit(-1)
 	}
 
-	kafkaProducer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost"})
-	if err != nil {
-		logger.Fatalf("Failed to initialize Kafka Producer")
-		os.Exit(-1)
-	}
-	defer kafkaProducer.Close()
-	go func() {
-		for e := range kafkaProducer.Events() {
-			switch ev := e.(type) {
-			case *kafka.Message:
-				if ev.TopicPartition.Error != nil {
-					logger.Errorf("Delivery failed: %v\n", ev.TopicPartition)
-				} else {
-					logger.Debugf("Delivered message to %v\n", ev.TopicPartition)
-				}
-			}
-		}
-	}()
-
 	kafkaConsumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": "localhost",
-		"group.id":          "TaskManager",
+		"group.id":          "Analytics",
 		"auto.offset.reset": "earliest",
 	})
 	if err != nil {
@@ -75,9 +54,9 @@ func main() {
 		os.Exit(-1)
 	}
 
-	err = kafkaConsumer.SubscribeTopics([]string{"user.lifecycle"}, nil)
+	err = kafkaConsumer.SubscribeTopics([]string{"user.lifecycle", "accountlog.lifecycle"}, nil)
 	if err != nil {
-		logger.Fatalf("Failed to subscribe to necessary Kafka topic")
+		logger.Fatalf("Failed to subscribe to necessary Kafka topics")
 		os.Exit(-1)
 	}
 
@@ -90,35 +69,24 @@ func main() {
 		os.Exit(-1)
 	}
 
-	// Ensure tables and model
-	_ = db.AutoMigrate(&User{}, &Task{}, &Status{}, &TaskLog{})
-	//createDefaultStatuses(db)
-	migrateTasksV1toV2(db)
+	// Ensure tables
+	_ = db.AutoMigrate(&User{}, &AccountLog{})
 
-	err = schema.Validate()
-	if err != nil {
-		logger.Fatalf("Failed to validate current avro models: %s", err.Error())
-		os.Exit(-1)
-	}
-
-	app := tmSvc{
+	app := anSvc{
 		logger:     logger,
-		tmDb:       db,
+		anDb:       db,
 		authServer: common.EnsureServerProtocol(authServer),
 		authHttpClient: &http.Client{
 			Transport: &http.Transport{
 				//TLSClientConfig: tlsConfig,
 			},
 		},
-		kafkaProducer: kafkaProducer,
 		kafkaConsumer: kafkaConsumer,
 	}
 
-	e.POST("/tasks/new", app.newTask)
-	e.POST("/tasks/reassign", app.reassignTasks)
-	e.GET("/tasks/list", app.getOpenTasks)
-	e.GET("/tasks/:tid", app.getTask)                // tid is UUID
-	e.POST("/tasks/:tid/complete", app.completeTask) // tid is UUID
+	e.GET("/analytics/today", app.getToday)
+	e.GET("/analytics/expensive/:dayFrom", app.getExpensive)
+	e.GET("/analytics/expensive/:dayFrom/:dayTo", app.getExpensive)
 
 	abortReadCh := make(chan bool)
 	go app.startReadingNotification(abortReadCh)

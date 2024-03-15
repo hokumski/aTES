@@ -2,32 +2,18 @@ package main
 
 import (
 	"ates/common"
-	"context"
-	"encoding/json"
-	"errors"
-	"github.com/segmentio/kafka-go"
+	"ates/schema"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/hamba/avro/v2"
+	"sync"
+	"time"
 )
-
-type Notification struct {
-	Attributes map[string]string `json:"attributes"`
-	Payload    []byte            `json:"payload"`
-}
-
-func (n *Notification) marshal() []byte {
-	body, _ := json.Marshal(n)
-	return body
-}
-
-func buildNotification(data []byte) (Notification, error) {
-	var n Notification
-	err := json.Unmarshal(data, &n)
-	return n, err
-}
 
 // getTaskForNotification returns new Task with public attributes, ready to be sent as notification
 func getTaskForNotification(task *Task) Task {
 	return Task{
 		PublicId:    task.PublicId,
+		JiraId:      task.JiraId,
 		Title:       task.Title,
 		Description: task.Description,
 		StatusID:    task.StatusID,
@@ -38,39 +24,48 @@ func getTaskForNotification(task *Task) Task {
 }
 
 // notifyAsync sends notification to Kafka
-func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interface{}) {
+func (svc *tmSvc) notifyAsync(eventType string, e interface{}) {
+
+	// Important: right now we are sending all events in a single topic,
+	// not separating CUD (create-update-delete) and BE (business events).
+	// That will be a part of future refactoring (maybe)
+
+	// Also, library confluent-kafka-go has no publicly exposed batch methods.
+	// In the contrast, segmentio/kafka-go does have, but we use Confluent to work with SchemaRegistry.
+
+	topic := "task.lifecycle"
 
 	msg := kafka.Message{
-		Key:   []byte(common.GenerateRandomString(10)),
-		Value: nil,
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            []byte(common.GenerateRandomString(10)),
+		Value:          nil,
 	}
 
-	attributes := make(map[string]string)
-	attributes["event"] = eventType
+	common.AppendKafkaHeader(&msg, "event", eventType)
+	common.AppendKafkaHeader(&msg, "producer", "TaskManager")
 
 	switch e.(type) {
-	case []Task:
-		// ...
 	case Task:
-		attributes["entity"] = "Task"
 
 		switch eventType {
-		case "TaskCreated", "TaskCompleted", "TaskReassigned":
+		case "Task.Created", "Task.Completed", "Task.Reassigned":
+			common.AppendKafkaHeader(&msg, "eventVersion", "v2")
 
 			t := e.(Task)
+			t.load(svc)
 			taskForNotification := getTaskForNotification(&t)
-
-			notification := Notification{
-				Attributes: attributes,
-				Payload:    taskForNotification.marshal(),
+			b, err := taskForNotification.marshal()
+			if err != nil {
+				svc.logger.Errorf("failed to marshal Task %s to avro: %s", t.PublicId, err.Error())
+				return
 			}
-			msg.Value = notification.marshal()
+			msg.Value = b
 
 		}
 	}
 
 	if msg.Value != nil {
-		err := svc.kafkaWriter.WriteMessages(*ctx, msg)
+		err := svc.kafkaProducer.Produce(&msg, nil)
 		if err != nil {
 			svc.logger.Errorf("Failed to send event notification on %s", eventType)
 			svc.logger.Error(err)
@@ -79,57 +74,36 @@ func (svc *tmSvc) notifyAsync(ctx *context.Context, eventType string, e interfac
 }
 
 // startReadingNotification reads topics from Kafka, constructs Notification and sends to notification channel
-func (svc *tmSvc) startReadingNotification(notifyCh chan<- Notification, abortCh <-chan bool) {
+func (svc *tmSvc) startReadingNotification(abortCh <-chan bool) {
 	defer func() {
-		_ = svc.kafkaReader.Close()
+		_ = svc.kafkaConsumer.Close()
 	}()
 
-	cctx, cancelReader := context.WithCancel(context.Background())
+	run := true
+	runMx := &sync.Mutex{}
+
 	go func() {
-		for {
-			msg, err := svc.kafkaReader.ReadMessage(cctx)
+		for run {
+			msg, err := svc.kafkaConsumer.ReadMessage(time.Second)
 			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return
-				}
-				svc.logger.Error(err)
-			}
-			n, err := buildNotification(msg.Value)
-			if err == nil {
-				svc.logger.Infof("Incoming notification from %s: %s", msg.Topic, n.Attributes["event"])
-				notifyCh <- n
-			} else {
-				svc.logger.Errorf("Got notification from %s with wrong format", msg.Topic)
-			}
-		}
-	}()
-
-	for {
-		select {
-		case _ = <-abortCh:
-			cancelReader()
-			return
-		}
-	}
-
-}
-
-// processNotifications reads notification channel, and performs CUD operations with incoming events from other services
-func (svc *tmSvc) processNotifications(notifyCh <-chan Notification, abortCh <-chan bool) {
-	for {
-		select {
-		case notification := <-notifyCh:
-
-			eventType := notification.Attributes["event"]
-			eventEntity := notification.Attributes["entity"]
-
-			switch eventType {
-			case "UserCreated":
-				if eventEntity != "User" {
+				if err.(kafka.Error).IsTimeout() {
 					continue
 				}
+				svc.logger.Error(err)
+				continue
+				//return
+			}
+
+			eventType, err := common.GetKafkaHeader(msg, "event")
+			if err != nil {
+				svc.logger.Infof("missing event header in the message %s, skipping", msg.Key)
+				continue
+			}
+
+			switch eventType {
+			case "User.Created":
 				var u User
-				err := json.Unmarshal(notification.Payload, &u)
+				err := avro.Unmarshal(schema.UserSchema, msg.Value, &u)
 				if err != nil {
 					svc.logger.Errorf("Failed to process notification on %s: bad payload", eventType)
 					continue
@@ -143,9 +117,17 @@ func (svc *tmSvc) processNotifications(notifyCh <-chan Notification, abortCh <-c
 				}
 
 			}
+		}
+	}()
 
+	for {
+		select {
 		case _ = <-abortCh:
+			runMx.Lock()
+			run = false
+			runMx.Unlock()
 			return
 		}
 	}
+
 }
